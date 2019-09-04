@@ -1,0 +1,21 @@
+channels:
+    - conda-forge
+    - bioconda
+    - r
+    - defaults
+dependencies:
+    - snakemake=5.5.0
+    - bedtools=2.26.0
+    - r=3.3.2
+    - python=3.6.3
+    - r-gridExtra=2.2.1
+    - r-reshape2=1.4.2
+    - r-ggplot2=2.2.1
+    - r-scales=0.5.0
+    - r-ggpubr=0.1.6
+    - r-dplyr=0.7.4
+    - r-readr=1.1.1
+    - r-tidyr=0.8.0
+    - r-Hmisc=4.0.3
+    - r-RColorBrewer=1.1.2
+    - pybedtools=0.7.10

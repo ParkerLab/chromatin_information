@@ -1,0 +1,26 @@
+__default__:
+  time: '01:00:00'
+  mem: 4000
+  N: 1
+  threads: 1
+  name: smk.{rule}.{wildcards}.JOBNAME
+  output: logs/{rule}.{wildcards}.out
+trim:
+  time: '01:00:00'
+  mem: 5000
+map:
+  time: '24:00:00'
+  mem: 30000
+merge:
+  time: '02:00:00'
+  mem: 5000
+mark_duplicates:
+  time: '02:00:00'
+  mem: 15000
+vsignal:
+  time: '00:15:00'
+  mem: 8000
+  threads: 5
+versions:
+  time: '00:01:00'
+  mem: 1000

@@ -1,0 +1,95 @@
+results: work
+email: "your-email@domain.com"
+tss:
+    hg19: 
+        "../../data/annot/hg19.tss.refseq.housekeeping.ortho.bed"
+blacklist:
+    hg19:
+    - "../../data/annot/wgEncodeDukeMapabilityRegionsExcludable.bed.gz"
+    - "../../data/annot/wgEncodeDacMapabilityConsensusExcludable.bed.gz"
+whitelist:
+    dummy: ""
+bwa_index:
+    hg19: 
+        "../../data/bwa_index/hg19"
+ctcf_cohesin:
+    hg19: 
+        "../../data/annot/triple_conserved_CTCF_known2_ctcf_rad21_hg19.bed"
+
+libraries:
+    # GM12878 (this study)
+    lab_gm12878:
+        genome: hg19
+        readgroups:
+            lab_gm12878:
+            - ../../data/fastq/GSM3984860.1.fastq
+            - ../../data/fastq/GSM3984860.2.fastq
+    # GM12878 sonicated
+    lab_gm12878_sonicated_3:
+        genome: hg19
+        readgroups:
+            lab_gm12878_sonicated_3:
+            - ../../data/fastq/GSM3984863.1.fastq
+            - ../../data/fastq/GSM3984863.2.fastq
+    # GM12878 (Buenrostro)
+    buenrostro_rep1:
+        genome: hg19
+        readgroups:
+            buenrostro_rep1:
+            - ../../data/fastq/SRX298000.1.fastq
+            - ../../data/fastq/SRX298000.2.fastq
+    # HepG2 1
+    hepg2_3:
+        genome: hg19
+        readgroups:
+            hepg2_3:
+            - ../../data/fastq/ERR3013410.1.fastq
+            - ../../data/fastq/ERR3013410.2.fastq
+    # HepG2 2
+    hepg2_1:
+        genome: hg19
+        readgroups:
+            hepg2_1:
+            - ../../data/fastq/ERR3013408.1.fastq
+            - ../../data/fastq/ERR3013408.2.fastq    
+    # Pancreatic islets
+    abcu196_4:
+        genome: hg19
+        readgroups:
+            abcu196_4:
+            - ../../data/fastq/SRX2768920.1.fastq
+            - ../../data/fastq/SRX2768920.2.fastq
+    # Pancreatic islets alpha cells
+    alpha3:
+        genome: hg19
+        readgroups:
+            alpha3_r1:
+            - ../../data/fastq/SRR3048043.1.fastq
+            - ../../data/fastq/SRR3048043.2.fastq
+            alpha3_r2:
+            - ../../data/fastq/SRR3048044.1.fastq
+            - ../../data/fastq/SRR3048044.2.fastq
+    # Pancreatic islets beta cells
+    beta3:
+        genome: hg19
+        readgroups:
+            beta3_r1:
+            - ../../data/fastq/SRR3048049.1.fastq
+            - ../../data/fastq/SRR3048049.2.fastq
+            beta3_r2:
+            - ../../data/fastq/SRR3048050.1.fastq
+            - ../../data/fastq/SRR3048050.2.fastq
+    # CD4+ T cells 1
+    cd4_87:
+        genome: hg19
+        readgroups:
+            cd4_87:
+            - ../../data/fastq/SRR5427862.1.fastq
+            - ../../data/fastq/SRR5427862.2.fastq
+    # CD4+ T cells 2
+    cd4_88:
+        genome: hg19
+        readgroups:
+            cd4_88:
+            - ../../data/fastq/SRR5427863.1.fastq
+            - ../../data/fastq/SRR5427863.2.fastq
