@@ -1,0 +1,20 @@
+results: 
+    "work"
+motif_file: 
+    ../../data/motifs_with_chipseq_gm12878.txt
+motif_dir: 
+    "../../data/motifs_scans"
+chip_assoc:
+    "../../data/chipseq_associations_gm12878.txt"
+bam_subsampled: 
+    "/lab/work/albanus/2018_redo_all/work/tf-binding/subsampled_bam"
+peaks_subsampled:
+    "/lab/work/albanus/2018_redo_all/work/tf-binding/subsampled_peaks"
+
+samples:
+    buenrostro_rep1:
+        genome: "hg19"
+        depth: 81542401
+    lab_gm12878:
+        genome: "hg19"
+        depth: 24125302

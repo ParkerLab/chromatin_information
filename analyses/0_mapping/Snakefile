@@ -199,23 +199,6 @@ rule all:
         os.path.join(VERSION_DIR, 'bedtools_version.txt'),
         os.path.join(VERSION_DIR, 'ataqv_version.txt')
 
-#
-# Subsampled results
-#
-rule all_subsample:
-    input:
-        [os.path.join(SUBSAMPLE_DIR, '{}.subsampled.bam'.format(x))
-         for x in config['libraries']],
-        [os.path.join(
-            MACS2_SUB_DIR,
-            '{}_peaks.broadPeak.noblacklist'.format(x)
-        ) for x in config['libraries']],
-        [os.path.join(
-            MACS2_SUB_DIR,
-            '{}_peaks.narrowPeak.noblacklist'.format(x)
-        ) for x in config['libraries']],
-
-
 rule fastqc:
     input:
         lambda wildcards: fastq_basename_to_fastq(

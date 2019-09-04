@@ -14,7 +14,8 @@ _A companion repository_
 - [ ] Analyses and notebooks
     - [x] 0_mapping
     - [x] 1bcd_vplots
-    - [ ] 1e_bmo
+    - [x] 1e_bmo
+        - [ ] PIQ
     - [ ] 1f_fvices
     - [ ] 2b_ctcf-cohesin
     - [ ] 2f_asymmetry
