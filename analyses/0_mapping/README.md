@@ -6,6 +6,6 @@
 
 ## Usage
 
-```{sh}
+```sh
 snakemake [options] --configfile config.yml --cluster-config cluster.yml
 ```

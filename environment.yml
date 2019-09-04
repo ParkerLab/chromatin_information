@@ -7,7 +7,7 @@ dependencies:
     - snakemake=5.5.0
     - bedtools=2.26.0
     - r=3.3.2
-    - python=3.6.3
+    - python=3.5.3
     - r-gridExtra=2.2.1
     - r-reshape2=1.4.2
     - r-ggplot2=2.2.1
