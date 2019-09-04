@@ -86,7 +86,7 @@ rule downsample:
         join(VPLOT_dir, "{motif}.downsampled.vsignal.gz")
     shell:
         """
-        Rscript downsample.R {input.vsignal} {input.frags} \
+        Rscript scripts/downsample.R {input.vsignal} {input.frags} \
             {input.motifs} {output}
         """
     
@@ -100,7 +100,7 @@ rule vplots:
         motif = "{motif}"
     shell:
         """
-        Rscript ~albanus/scripts/makeVplots.R -f {input} \
+        Rscript ../../bin/makeVplots.R -f {input} \
             -o {params.out} -n {params.motif} --ylim 1.25 --split
     """
 
@@ -112,7 +112,7 @@ rule downsample2:
         join(VPLOT2_dir, "{motif}.downsampled.vsignal.gz")
     shell:
         """
-        Rscript downsample2.R {input.vsignal} {input.motifs} {output}
+        Rscript scripts/downsample2.R {input.vsignal} {input.motifs} {output}
         """
     
 rule vplots2:
