@@ -1,0 +1,82 @@
+#! /usr/bin/env python
+
+from os.path import join
+
+
+def get_samples():
+    """List all samples"""
+    for sample in config['samples']:
+        yield sample
+
+
+# Config
+BAM_dir = "../0_mapping/work/prune"
+MOTIF_dir = config["bound_motif_dir"]
+
+RESULTS = config["results"]
+NOOVERLAP_dir = join(RESULTS, "no_co-occurring")
+VPLOT_dir = join(RESULTS, "vplots_chip-seq", "{sample}")
+PROCESSED_dir = join(RESULTS, "output")
+
+# Wildcards
+samples = get_samples()
+handles, = glob_wildcards(join(MOTIF_dir, "{handle}.bed"))
+
+
+rule all:
+    input:
+        expand(join(VPLOT_dir, "{handle}.png"),
+               sample=samples, handle=handles),
+
+rule all_fvices:
+    input:
+        VPLOT_dir,
+    output:
+        join(PROCESSED_dir, "{sample}.fvice.out"),
+    shell:
+        """
+        ionice -c2 -n7 python ../../bin/get_fvice.py {input} {output}
+        """
+
+rule filter_coocurring:
+    input:
+        join(MOTIF_dir, "{handle}.bed"),
+    output:
+        join(NOOVERLAP_dir, "{handle}.bed"),
+    shell:
+        """
+        ionice -c2 -n7 ../../bin/filter_bed_co-occurring.py -i {input} \
+            -d 500 -c 5 -t strict > {output}
+        """
+
+rule vsignal:
+    input:
+        bam = join(BAM_dir, "{sample}.pruned.bam"),
+        motif = rules.filter_coocurring.output,
+    output:
+        vsignal = join(VPLOT_dir, "{handle}.vsignal.gz"),
+    threads:
+        8
+    params:
+        "-r 500 -f 3 -F 4 -F 8 -q 30"
+    resources:
+        io_limit = 1
+    shell:
+        """
+        ionice -c2 -n7 measure_signal -p {threads} {params} \
+            {input.bam} {input.motif} | gzip -c > {output}
+        """
+
+rule vplot:
+    input:
+        rules.vsignal.output,
+    output:
+        join(VPLOT_dir, "{handle}.png"),
+    params:
+        main_handle = join(VPLOT_dir, "{handle}"),
+        name = "{sample}" + "_{handle}",
+    shell:
+        """
+        Rscript ../../scripts/makeVplots.R -f {input} \
+            -o {params.main_handle} -n {params.name} --ylim 1.0
+        """

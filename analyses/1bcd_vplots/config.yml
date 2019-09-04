@@ -1,0 +1,6 @@
+results: "work"
+bound_motif_dir: "../../data/chipseq_bound_motifs_gm12878"
+
+samples:
+    - lab_gm12878
+    - buenrostro_rep1

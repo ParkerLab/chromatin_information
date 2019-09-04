@@ -13,9 +13,9 @@ _A companion repository_
     - [ ] download_fastq.sh
 - [ ] Analyses and notebooks
     - [x] 0_mapping
-    - [ ] 1bc_vplots
-    - [ ] 1d_bmo
-    - [ ] 1e_fvices
+    - [x] 1bcd_vplots
+    - [ ] 1e_bmo
+    - [ ] 1f_fvices
     - [ ] 2b_ctcf-cohesin
     - [ ] 2f_asymmetry
     - [ ] 3c_enrichments
@@ -46,7 +46,7 @@ All requirements (except for Slurm) are included in the conda virtual environmen
 * [Slurm](https://slurm.schedmd.com) (16.05.09+) or some other job scheduler. The cluster config files here are set up for slurm.
 * [Rstudio](https://www.rstudio.com) (1.1.456+). Required for the RMarkdown notebooks
 * [R](https://www.r-project.org) (3.5.1+). Note that each notebook will have different package requirements.
-* [Python 3.5.3](https://www.python.org)
+* [Python](https://www.python.org) (3.5.3+)
 
 ## Contact
 * For questions directly about the paper, the corresponding author is Dr. Stephen C.J. Parker (scjp@umich.edu).

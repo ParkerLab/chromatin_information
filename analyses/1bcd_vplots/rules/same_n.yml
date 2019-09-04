@@ -1,0 +1,11 @@
+results: 
+    "work/same_n"
+vsignal_dir: 
+    "work/vplots_chip-seq"
+motifs:
+    - "CTCF__CTCF_known2__ENCFF963PJY-CTCF"
+    - "AP1__AP1_known5__ENCFF784PEF-JUNB"
+    - "NFKB__NFKB_known10__ENCFF739VBA-RELB"
+samples:
+    - "lab_gm12878"
+    - "buenrostro_rep1"
