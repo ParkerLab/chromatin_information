@@ -77,15 +77,16 @@ def get_motif_index(motif):
 
 
 # Data
-BAM_SUB_DIR = config["bam_subsampled"]
-MACS2_SUB_DIR = config["peaks_subsampled"]
 MOTIF_DIR = config["motif_dir"]
+TP_dir = config["bound_motifs"]
 
 # Path generator function
 
 
 # Target directories (relative to root)
 RESULTS = config["results"]
+BAM_SUB_DIR = join(RESULTS, "bam_subsampled")
+MACS2_SUB_DIR = join(RESULTS, "macs2_subsampled")
 BMO_DIR = join(RESULTS, "bmo")
 CENTI_DIR = join(RESULTS, "centipede")
 CENTI_SB_DIR = join(RESULTS, "centipede_singlebin")
@@ -103,23 +104,9 @@ F1_DIR = join(RESULTS, "f1", "{sample}")
 LOG_DIR = join(RESULTS, "logs")
 VERSION_DIR = join(RESULTS, "versions")
 
-
 # Subsample dictionary -
 # will be used to determine the output files for each sample
 subsample_depths = {x: subsampled_depths_from_sample(x) for x in get_samples()}
-
-# Number of motifs and motif-number dictionary - used for PIQ
-# e.g. 9-CTCFknown2, 20-NFKBknown10
-all_motifs = [x for x in get_motifs()]
-all_motifs.sort()
-nmotifs = len(all_motifs)
-motif_dic = {}
-motif_handle_dic = {}
-for i in range(0, nmotifs):
-    motif = all_motifs[i]
-    handle = "{}-{}".format(i + 1, all_motifs[i].replace("_", ""))
-    motif_dic[motif] = str(i + 1)
-    motif_handle_dic[motif] = handle
 
 
 rule all:
@@ -202,29 +189,6 @@ rule all:
             motif=get_motifs()
         ) for sample, depths in subsample_depths.items()],
 
-rule all_piq:
-    input:
-        # PIQ - binarized files
-        [expand(
-            join(
-                PIQ_DIR,
-                "processed_output_binary", "{sample}", "{depth}M.{motif}.bed"
-            ),
-            sample=sample,
-            depth=depths,
-            motif=get_motifs()
-        ) for sample, depths in subsample_depths.items()],
-        # PIQ - scores files
-        [expand(
-            join(
-                PIQ_DIR,
-                "processed_output_scores", "{sample}", "{depth}M.{motif}.bed"
-            ),
-            sample=sample,
-            depth=depths,
-            motif=get_motifs()
-        ) for sample, depths in subsample_depths.items()],
-
 rule all_evaluate:
     input:
         [expand(
@@ -253,7 +217,6 @@ include: "rules/tf-binding_dnase2tf.smk"
 include: "rules/tf-binding_centipede.smk"
 include: "rules/tf-binding_bmo.smk"
 include: "rules/tf-binding_centipede_singlebin.smk"
-include: "rules/tf-binding_piq.smk"
 
 # # Compare methods
 include: "rules/tf-binding_evaluate.smk"

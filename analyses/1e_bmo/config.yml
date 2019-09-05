@@ -6,10 +6,8 @@ motif_dir:
     "../../data/motifs_scans"
 chip_assoc:
     "../../data/chipseq_associations_gm12878.txt"
-bam_subsampled: 
-    "/lab/work/albanus/2018_redo_all/work/tf-binding/subsampled_bam"
-peaks_subsampled:
-    "/lab/work/albanus/2018_redo_all/work/tf-binding/subsampled_peaks"
+bound_motifs:
+    "../../data/chipseq_bound_motifs_gm12878"
 
 samples:
     buenrostro_rep1:

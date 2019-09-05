@@ -15,7 +15,7 @@ _A companion repository_
     - [x] 0_mapping
     - [x] 1bcd_vplots
     - [x] 1e_bmo
-        - [ ] PIQ
+        - [x] PIQ
     - [ ] 1f_fvices
     - [ ] 2b_ctcf-cohesin
     - [ ] 2f_asymmetry
