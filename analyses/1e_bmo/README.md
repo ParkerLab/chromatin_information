@@ -1,7 +1,7 @@
 # TF-binding algorithms comparisons
 
 ## Usage
-### Downsample BAM files, call peaks, and run TF-binding prediction algorithms (minus PIQ)
+### Downsample BAM files, call peaks, and run TF-binding prediction algorithms
 ```sh
 snakemake -npr --configfile config.yml -q
 ```
@@ -12,8 +12,8 @@ This will generate a `sh.roc` and `sh.f1` file containing all the jobs that need
 ```sh
 snakemake -npr --configfile config.yml all_evaluate -q
 
-# Check if the sh.roc and sh.f1 files were created
-ls -hlrt
+# Check if the sh.roc and sh.f1 files are not empty
+wc -l sh.*
 # Regenerate sh.roc
 snakemake --configfile config.yml all_evaluate -R get_roc
 # Regenerate sh.f1
@@ -27,7 +27,10 @@ snakemake -npr --configfile config.yml all_aggregate -q
 
 ### Compare BMO and PIQ
 ```sh
+# Run PIQ
 snakemake -npr -s rules/piq_bmo.smk --configfile config.yml -q
+# Compare methods
 snakemake -npr -s rules/piq_bmo.smk --configfile config.yml -q all_metrics
+# Aggregate results
 snakemake -npr -s rules/piq_bmo.smk --configfile config.yml -q aggregate_f1 aggregate_prauc
 ```

@@ -4,13 +4,16 @@ _A companion repository_
 ## To-do
 - [ ] Processed data
     - [ ] Motif scans
+    - [x] ChIP-seq bound motifs (GM12878)
     - [ ] Motif f-VICEs
     - [ ] 6-mer f-VICEs
     - [ ] Asymmetry
     - [ ] Protein domains
     - [ ] FRAP times
 - [ ] Auxiliary scripts
+    - [ ] install_dependencies.R
     - [ ] download_fastq.sh
+    - [ ] download_processed_files.sh
 - [ ] Analyses and notebooks
     - [x] 0_mapping
     - [x] 1bcd_vplots
