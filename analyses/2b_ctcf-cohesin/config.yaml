@@ -1,0 +1,12 @@
+results: "work"
+intersections_dir: "../../data/chipseq_bound_motifs_gm12878"
+cttf_chipseq_dir: "../../data/gm12878_ctcf"
+rad21_chipseq_dir: "../../data/gm12878_rad21"
+
+samples:
+    lab_gm12878:
+        bamfile: "../0_mapping/work/prune/lab_gm12878.pruned.bam"
+    lab_gm12878_sonicated:
+        bamfile: "../0_mapping/work/prune/lab_gm12878_sonicated_3.pruned.bam"
+    lab_gm12878_downsampled:
+        bamfile: "work/subsampled/lab_gm12878.subsampled_to_soni3.pruned.bam"

@@ -1,0 +1,200 @@
+#! /usr/bin/env python
+
+import os
+from os.path import join
+
+# Helper functions
+
+
+def get_samples():
+    for sample in sorted(config['samples'].keys()):
+        yield sample
+
+
+def get_chipseq_from_motif(motif):
+    """Gets ChIP-seq from format {TF}__{motif}__{chipseq}-{TF2}"""
+    experiment = motif.split("__")[2].split("-")[0]
+    chipseq = join(config["cttf_chipseq_dir"], "{}.bed".format(experiment))
+    return chipseq
+
+
+# Directories
+RESULTS = config["results"]
+INTERSECT_DIR = join(RESULTS, "intersections_plus_minus", "{sample}")
+MOTIFS_DIR = join(RESULTS, "comparable_motifs", "{sample}")
+NOCOOCUR_DIR = join(RESULTS, "no_cooccurring", "{sample}")
+VSIGNAL_DIR = join(RESULTS, "vsignal", "{sample}")
+VPLOTS = join(RESULTS, "vplots", "{sample}")
+
+
+# Wildcards
+# cohesins, = glob_wildcards(join(
+#     config['rad21_chipseq_dir'], "{cohesin, [0-9A-Z]+}.bed")
+# )
+# motifs = ["CTCF__CTCF_known2__ENCFF096AKZ-CTCF",
+#           "CTCF__CTCF_known2__ENCFF710VEH-CTCF",
+#           "CTCF__CTCF_known2__ENCFF963PJY-CTCF"]
+
+cohesins = ["ENCFF753RGL"]
+motifs = ["CTCF__CTCF_known2__ENCFF963PJY-CTCF"]
+
+
+# Pipeline
+rule all:
+    input:
+        expand(
+            join(SAME_N_MANUAL, "{motif}__{cohesin}.{type}.png"),
+            sample=get_samples(), motif=motifs, cohesin=cohesins,
+            type=['plus', 'minus']
+        ),
+
+rule all_fvices:
+    input:
+        expand(
+            join(RESULTS, "output", "{sample}.fvice.out"),
+            sample=get_samples()
+        )
+
+
+rule downsample_bam:
+    """Downsample our GM12878 to the same depth as sonicated"""
+    input:
+        "../0_mapping/work/prune/lab_gm12878.pruned.bam"
+    output:
+        "work/subsampled/lab_gm12878.subsampled_to_soni3.pruned.bam"
+    params:
+        seed_fraction = 1707.1430845508
+    shell:
+        """
+        samtools view -b -h -s {params} {input} > ${output} &&
+        samtools index {output}
+        """
+
+rule measureRawSignal:
+    input:
+        motif = join(config["intersections_dir"], "{motif}.bed"),
+        bam = lambda wildcards: config['samples'][wildcards.sample]["bamfile"]
+    output:
+        join(RESULTS, "raw_signal", "{sample}", "{motif}.bed")
+    threads:
+        15
+    resources:
+        io_limit = 1
+    shell:
+        """
+        ionice -c2 -n7 ~albanus/scripts/measureRawSignal.py -p {threads} \
+            -b {input.bam} -m {input.motif} > {output}
+        """
+
+rule intersect_cohesin:
+    input:
+        motif = rules.measureRawSignal.output,
+        rad21 = join(config['rad21_chipseq_dir'], "{cohesin}.bed"),
+        chipseq = lambda wildcards: get_chipseq_from_motif(wildcards.motif)
+    output:
+        plus = join(INTERSECT_DIR, "{motif}__{cohesin}.plus.bed"),
+        minus = join(INTERSECT_DIR, "{motif}__{cohesin}.minus.bed")
+    shell:
+        """
+        ionice -c2 -n7 intersectBed -u -f 1.0 -a {input.motif} \
+            -b {input.rad21} | intersectBed -wo -f 1.0 -a stdin \
+            -b {input.chipseq} | cut -f 1-7,14 | sortBed > {output.plus}
+
+        ionice -c2 -n7 intersectBed -v -a {input.motif} -b {input.rad21} | \
+            intersectBed -wo -f 1.0 -a stdin -b {input.chipseq} | \
+            cut -f 1-7,14 | sortBed > {output.minus}
+        """
+
+rule make_comparable_signal:
+    input:
+        rules.intersect_cohesin.output.plus,
+        rules.intersect_cohesin.output.minus
+    output:
+        plus = join(MOTIFS_DIR, "{motif}__{cohesin}.plus.bed"),
+        minus = join(MOTIFS_DIR,"{motif}__{cohesin}.minus.bed"),
+    params:
+        handle = "{motif}__{cohesin}",
+        indir = INTERSECT_DIR,
+        outdir = MOTIFS_DIR,
+    shell:
+        """
+        ionice -c2 -n7 Rscript bin/compare_signals.R -m {params.handle} \
+            -d {params.indir} -o {params.outdir}
+        """
+
+rule filter_co_occurring:
+    input:
+        join(MOTIFS_DIR, "{motif}__{cohesin}.{type}.bed")
+    output:
+        join(NOCOOCUR_DIR, "{motif}__{cohesin}.{type}.bed")
+    shell:
+        """
+        ionice -c2 -n7 ../../bin/filter_bed_co-occurring.py -i {input} \
+            -d 500 -c 5 -t strict > {output}
+        """
+
+rule vsignal:
+    input:
+        bam = lambda wildcards: config['samples'][wildcards.sample]["bamfile"],
+        motif = rules.filter_co_occurring.output
+    output:
+        join(VSIGNAL_DIR, "{motif}__{cohesin}.{type}.vsignal.gz")
+    threads:
+        8
+    params:
+        "-r 500 -f 3 -F 4 -F 8 -q 30"
+    resources:
+        io_limit = 1
+    shell:
+        """
+        ionice -c2 -n7 ../../bin/measure_signal -p {threads} {params} \
+            {input.bam} {input.motif} | gzip -c > {output}
+        """
+
+rule vplots:
+    input:
+        f1 = join(VSIGNAL_DIR, "{motif}__{cohesin}.plus.vsignal.gz"),
+        f2 = join(VSIGNAL_DIR, "{motif}__{cohesin}.minus.vsignal.gz")
+    output:
+        out1 = join(VPLOTS, "{motif}__{cohesin}.plus.png"),
+        out2 = join(VPLOTS, "{motif}__{cohesin}.minus.png")
+    params:
+        opts = "--ylim 0.75 --alpha 0.1 --split",
+        maxfrags = 11449,
+        tmp = join(VPLOTS, "{motif}__{cohesin}.tmp.vsignal.gz"),
+        handle1 = join(VPLOTS, "{motif}__{cohesin}.plus"),
+        handle2 = join(VPLOTS, "{motif}__{cohesin}.minus"),
+        name1 = "{sample}_{motif}__{cohesin}.plus",
+        name2 = "{sample}_{motif}__{cohesin}.minus"
+    shell:
+        """
+        set +o pipefail  # head exits with SIGPIPE > 0 and breaks Snakemake...
+
+        zcat {input.f1} | head -n 1 | cut -f 6 --complement | \
+            gzip -c > {params.tmp}_1.gz
+        zcat {input.f1} | tail -n +2 | awk '$4 > 40 {{print}}' | \
+            cut -f 6 --complement | shuf -n {params.maxfrags} | \
+            gzip -c >> {params.tmp}_1.gz
+
+        zcat {input.f2} | head -n 1 | cut -f 6 --complement | \
+            gzip -c > {params.tmp}_2.gz
+        zcat {input.f2} | tail -n +2 | awk '$4 > 40 {{print}}' | \
+            cut -f 6 --complement | shuf -n {params.maxfrags} | \
+            gzip -c >> {params.tmp}_2.gz
+
+        Rscript ../../bin/makeVplots.R -f {params.tmp}_1.gz \
+            -o {params.handle1} -n {params.name1} {params.opts} \
+            --maxfrags {params.maxfrags} && rm {params.tmp}_1.gz
+
+        Rscript ../../bin/makeVplots.R -f {params.tmp}_2.gz \
+            -o {params.handle2} -n {params.name2} {params.opts} \
+            --maxfrags {params.maxfrags} && rm {params.tmp}_2.gz
+        """
+
+rule fetch_fvices:
+    input: 
+        VPLOTS
+    output:
+        join(config["results"], "output", "{sample}.fvice.out")
+    shell:
+        "ionice -c2 -n7 python ../../bin/get_fvice.py {input} {output}"
