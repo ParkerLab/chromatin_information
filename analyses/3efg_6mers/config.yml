@@ -1,0 +1,30 @@
+results: "work"
+k_value: 6
+kmer_dir: "../../data/6-mers"
+kmer_file: ../../data/all_6-mers.txt
+genomedir: "/path/to/hg19"
+mappable_regions: "../../data/annot/hg19_mappable.bed.gz"
+allelic_imbalance_dir: "../../data/allelic_imbalance_downsampled_to_20"
+samples:
+    ## Benrostro GM12878
+    buenrostro_rep1:
+        genome: hg19
+        alias: GM12878    
+        bamfile: work/mapping/prune/buenrostro_rep1.pruned.bam
+
+    ## Parker GM12878
+    lab_gm12878:
+        genome: hg19
+        alias: PL_GM12878
+        bamfile: work/mapping/prune/lab_gm12878.pruned.bam
+
+    ## ABCU196 islets
+    abcu196_4:
+        genome: hg19
+        alias: ABCU196
+        bamfile: work/mapping/prune/abcu196_4.pruned.bam
+
+    # HepG2
+    hepg2_3:
+        genome: hg19
+        bamfile: work/mapping/prune/hepg2_3.pruned.bam

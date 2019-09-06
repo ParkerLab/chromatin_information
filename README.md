@@ -5,7 +5,8 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
 
 ## To-do
 - [ ] Processed data
-    - [ ] Motif scans
+    - [x] Motif scans
+    - [x] 6-mer scans
     - [x] ChIP-seq bound motifs (GM12878)
     - [ ] Motif f-VICEs
     - [ ] 6-mer f-VICEs
@@ -26,7 +27,7 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
     - [x] 2b_ctcf-cohesin
     - [x] 2f_asymmetry
     - [x] 3c_enrichments
-    - [ ] 3efg_6mers
+    - [x] 3efg_6mers
     - [ ] supp_hepg2
 
 ## Description

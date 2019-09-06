@@ -1,0 +1,296 @@
+#! /usr/bin/env python
+#
+# The Parker Lab (theparkerlab.org)
+# University of Michigan, Ann Arbor
+#
+
+from os.path import join
+
+map_file = config["mappable_regions"]
+k = config["k_value"]
+ai_fdr = [0.10, 0.05, 1.0, "nominal"]
+
+outdir = join(config["results"], "{}-mers".format(k))
+kmerdir = join("data", "k-mer_scans", "{}-mers".format(k))
+genomedir = config["genomedir"]
+
+
+## Helper functions
+def get_samples():
+    """List all samples"""
+    for sample in sorted(config['samples'].keys()):
+        yield sample
+
+def get_sample_ai_file(sample):
+    """Get allelic imbalance associated with sample"""
+    ai = join(config["allelic_imbalance_dir"], 
+                      config["samples"][sample]["alias"])
+    ai = ai + ".snps.downsampled.bed"
+    return ai
+
+
+def get_ai_fraction(ai_fdr):
+    """Define minimum allelic imbalance for filtering"""
+    if ai_fdr == "1.0":
+        return 0
+    else:
+        return ""
+
+
+# Using the k-mers in the config file
+kmers = []
+with open(config["kmer_file"], "r") as kmer_file:
+    for kmer in kmer_file:
+        kmers.append(kmer.strip())
+kmers = list(set(kmers).intersection(set(all_kmers)))
+# kmers = [kmers[17]]
+
+print("Processing {} {}-mers".format(len(kmers),k))
+
+## Main script
+
+rule all:
+    input:
+        # expand(join(outdir, "kmers_to_use", "{sample}.txt"), 
+        #        sample=get_samples()),
+        expand(join(outdir, "bmo", "{sample}", "bound", 
+                            "{kmer}.bound.bed"), 
+               sample=get_samples(), kmer=kmers),
+        expand(join(outdir, "vplots", "{sample}", "{kmer}.png"), 
+               sample=get_samples(), kmer=kmers)
+
+rule all_fvices:
+    input:
+        expand(join(outdir, "output", "{sample}.fvice.out"), 
+               sample=get_samples())
+
+rule all_snp2kmer:
+    input:
+        expand(join(outdir, "allelic_imbalance", 
+                            "{sample}.significant.{ai_fdr}.kmers.txt"), 
+               sample=get_samples(), ai_fdr=ai_fdr)
+
+
+## Generate necessary files for run (execute before main call)
+rule select_kmers:
+    input:
+        expand(join(outdir, "kmers_to_use", "{sample}.txt"), 
+               sample=get_samples())
+
+rule select_allelic_imbalance_regions:
+    input:
+        lambda wildcards: get_sample_ai_file(wildcards.sample)
+    output:
+        join(
+            outdir, "kmers_to_use", "{sample}.significant.{ai_fdr}.bed"
+        )
+    params:
+        fdr = "{ai_fdr}",
+        fraction = lambda wildcards: get_ai_fraction(wildcards.ai_fdr)
+    shell:
+        """
+        ionice -c2 -n7 Rscript ../../bin/filter_ai_regions.R {input} \
+        {output} {params.fdr} {params.fraction}
+        """
+
+rule extract_kmers:
+    input:
+        rules.select_allelic_imbalance_regions.output
+    output:
+        join(outdir, "kmers_to_use", "{sample}.{ai_fdr}.txt")
+    params:
+        "-l {} --reference_genome {}".format(k, genomedir)
+    shell:
+        """
+        ionice -c2 -n7 python ../../bin/list_kmers.py -f {input} {params} |\
+            sort -u > {output}
+        """
+
+# Process k-mers
+rule clean_kmers:
+    input:
+        join("data", "k-mer_scans", "{}-mers".format(k), 
+                     "{kmer}.noBL.bed")
+    output:
+        join(outdir, "scans_no_bl_mappable", 
+                     "{kmer}.noBL.mappable.bed")
+    params:
+        mappable = map_file
+    resources: 
+        io_limit = 1
+    shell:
+        """
+        ionice -c2 -n7 zcat {params.mappable} | \
+            intersectBed -f 1.0 -a {input} -b stdin > {output}
+        """
+
+rule measure_raw_signal:
+    input:
+        kmer = rules.clean_kmers.output,
+        bam = "work/mapping/prune/{sample}.pruned.bam",
+        bai = "work/mapping/prune/{sample}.pruned.bam.bai"
+    output:
+        outdir + "/raw_signals/{sample}/all_regions/{kmer}.bed"
+    threads: 15
+    resources:
+        io_limit = 1
+    shell:
+        """
+        ionice -c2 -n7 ../../bin/measureRawSignal.py -p {threads} \
+            -b {input.bam} -m {input.kmer} > {output}
+        """
+
+rule kmers_outside_peaks:
+    input:
+        kmer = rules.measure_raw_signal.output,
+        peaks = "work/mapping/macs2/{sample}_peaks.broadPeak.noblacklist"
+    output:
+        join(outdir, "raw_signals", "{sample}", "outside_peaks", "{kmer}.bed")
+    shell:
+        """
+        ionice -c2 -n7 intersectBed -v -a {input.kmer} \
+            -b {input.peaks} > {output}
+        """
+
+rule count_overlapping_kmers:
+    input:
+        rules.measure_raw_signal.output
+    output:
+        outdir + "/raw_signals/{sample}/co_occurring/{kmer}.bed"
+    params: 100
+    shell:
+        """
+        ionice -c2 -n7 ~albanus/scripts/count_co-occuring_motifs.sh {input} \
+            {params} > {output}
+        """
+
+rule fit_nbinoms:
+    input:
+        raw_signal   = rules.measure_raw_signal.output,
+        kmer_counts = rules.count_overlapping_kmers.output,
+        outside_peaks = rules.kmers_outside_peaks.output
+    output:
+        outdir + "/negative_binomials/{sample}/{kmer}.bed.gz"
+    params:
+        in_handle = "{kmer}.bed",
+        out_handle = outdir + "/negative_binomials/{sample}/{kmer}",
+        d1= outdir + "/raw_signals/{sample}/all_regions/",
+        d2= outdir + "/raw_signals/{sample}/outside_peaks/"
+    shell:
+        """
+        ionice -c2 -n7 Rscript ../../bin/rawSigNBModel.R \
+            -f {params.in_handle} --dir1 {params.d1} --dir2 {params.d2} \
+            -o {params.out_handle} -c 7 --writeBed
+        """
+
+rule BMO:
+    input:
+        atac_nb = rules.fit_nbinoms.output,
+        kmer_counts = rules.count_overlapping_kmers.output
+    output:
+        outdir + "/bmo/{sample}/bound/{kmer}.bound.bed"
+    params:
+        bmo_output_dir = outdir + "/bmo/{sample}",
+        kmer = "{kmer}"
+    threads: 1
+    shell:
+        """
+        ionice -c2 -n7 Rscript ~/github/BMO/src/bmo.R --f1 {input.atac_nb} \
+            --f2 {input.kmer_counts} -o {params.bmo_output_dir} 
+            -n {params.kmer} -p {threads}
+        """
+
+rule filter_co_occurring:
+    input:
+        rules.BMO.output
+    output:
+        outdir + "/bound_no_overlap/{sample}/{kmer}.bed"
+    shell:
+        """
+        ionice -c2 -n7 ~/scripts/filter_bed_co-occurring.py -i {input} \
+            -d 500 -c 5 -t strict > {output}
+        """
+
+rule vsignal:
+    input:
+        bam = "work/mapping/prune/{sample}.pruned.bam",
+        bai = "work/mapping/prune/{sample}.pruned.bam.bai",
+        kmer = rules.filter_co_occurring.output
+    output:
+        vsignal = outdir + "/vplots/{sample}/{kmer}.vsignal.gz"
+    threads: 5
+    params:
+        flags = "-r 500 -f 3 -F 4 -F 8 -q 30"
+    resources:
+        io_limit = 1
+    shell:
+        """
+        ionice -c2 -n7 measure_signal -p {threads} {params.flags} \
+            {input.bam} {input.kmer} | gzip -c > {output}
+        """
+
+rule vplot:
+    input:
+        rules.vsignal.output
+    output:
+        outdir + "/vplots/{sample}/{kmer}.png"
+    params:
+        handle = outdir + "/vplots/{sample}/{kmer}",
+        name = "{sample}" + "_{kmer}"
+    shell:
+        """
+        ionice -c2 -n7 Rscript ~albanus/scripts/makeVplots.R -f {input} \
+            -o {params.handle} -n {params.name} --ylim 1.0
+        """
+
+# Collect results
+rule fetch_fvices:
+    input:
+        outdir + "/vplots/{sample}"
+    output:
+        outdir + "/output/{sample}.fvice.out"
+    shell:
+        "ionice -c2 -n7 python ../../bin/get_fvice.py {input} {output}"
+
+
+# Get k-mers associated with allelic imbalance
+rule snp2kmer:
+    input:
+        join(
+            outdir, "kmers_to_use", "{sample}.significant.{ai_fdr}.bed"
+        )
+    output:
+        join(outdir, "allelic_imbalance", 
+                     "{sample}.significant.{ai_fdr}.kmers.txt")
+    params:
+        "-l {} --reference_genome {}".format(k, genomedir)
+    shell:
+        """
+        ionice -c2 -n7 python ../../bin/snp2kmer.py -f {input} {params} > \
+            {output}
+        """
+
+
+## NOT RUN
+# # Perform genome-wide scans
+# Hic sunt dracones (kind of) - does not work on snakemake, 
+# but it's straightforward to set manually
+# rule create_kmer_table:
+#     param = k
+#     output: join(outdir, "kmers")
+#     shell: "scripts/generate_kmers.py {params} {output}"
+#
+# rule find_kmers:
+#     input: rules.create_kmer_table.output
+#     output: join(outdir, "kmers_scans", "{sample}", "done.ok")
+#     params: 
+#         outdir = join(outdir, "kmers_scans", "{sample}"),
+#         ref = lambda wildcards: config["reference"][wildcards.sample]
+#     threads: 16
+#     shell:
+#         """
+#         n_files=`cat {input} | wc -l`
+#         ulimit -n $({n_files}}
+#         ionice -c2 -n7 scripts/findkmers --parallelism 16 -output-directory \
+#             {params.outdir} {input} {params.ref}
+#         """
