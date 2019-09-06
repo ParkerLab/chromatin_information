@@ -1,0 +1,112 @@
+import os
+from os.path import join
+
+
+def get_samples():
+    """List all samples"""
+    for sample in sorted(config['samples'].keys()):
+        yield sample
+
+
+GREGOR_DIR = config['DIRECTORIES']['gregor_dir']
+GREGOR_BASE_DIR = config['DIRECTORIES']['gregor_base_dir']
+GREGOR_outputDir = join(
+    GREGOR_DIR, config['DIRECTORIES']['output_dir']
+)
+GREGOR_INPUT_SNPS = config['DATA']['input_snps']
+GREGOR_CONFIG_NAME = config['PARAMETERS']['config_name']
+ANNOT_dir = config["DIRECTORIES"]["annot_dir"]
+
+TRAITS = config["PARAMETERS"]["TRAITS"]
+R2 = config['PARAMETERS']['gregor_r2']
+annotations, = glob_wildcards(
+    join(ANNOT_dir.format(sample="lab_gm12878"), "{annot}.bed")
+)
+
+
+rule all:
+    """
+    Run GREGOR and assemble dataframe
+    """
+    input:
+        expand(
+            join(GREGOR_outputDir, "StatisticSummaryFile.txt"),
+            sample=get_samples(), trait=TRAITS, gregor_r2=R2
+        ),
+        expand(
+            join(GREGOR_BASE_DIR, "output",
+                 "results__{sample}__{trait}__ld{gregor_r2}.txt"),
+            sample=get_samples(), trait=TRAITS, gregor_r2=R2
+        ),
+        expand(
+            join(GREGOR_BASE_DIR, "output",
+                 "ld__{sample}__{trait}__ld{gregor_r2}.txt"),
+            sample=get_samples(), trait=TRAITS, gregor_r2=R2
+        ),
+
+rule makeBedFileIndex:
+    input:
+        lambda wildcards: expand(
+            join(ANNOT_dir, "{annot}.bed"), 
+            sample=wildcards.sample, annot=annotations
+        )
+    output:
+        join(GREGOR_DIR, "bed", "index.txt")
+    run:
+        with open(output[0], 'w') as outfile:
+            for f in input:
+                f = os.path.abspath(f)
+                print(f, file=outfile)
+
+rule setupGREGOR:
+    """Provide parameters to make GREGOR .conf file - one file per trait"""
+    input:
+        snpfile = GREGOR_INPUT_SNPS,
+        bedfile = rules.makeBedFileIndex.output
+    output:
+        conf = join(GREGOR_DIR, GREGOR_CONFIG_NAME),
+    params:
+        script = config['SCRIPTS']['makeConfFile'],
+        population = config['PARAMETERS']['POPULATION'],
+        gregorR2Threshold = '{gregor_r2}',
+        outputdir = GREGOR_outputDir,
+        cores = config['PARAMETERS']['cores']
+    shell:
+        r"""
+        python {params.script} --conffile {output.conf} \
+            --snpfile {input.snpfile} --bedfile {input.bedfile} \
+            --gregorR2Threshold {params.gregorR2Threshold} \
+            --cores {params.cores} --outputdir {params.outputdir} \
+            --population {params.population};
+        """
+
+rule runGREGOR:
+    """Run GREGOR """
+    input:
+        conf = rules.setupGREGOR.output.conf
+    output:
+        ld = join(GREGOR_outputDir, "index_SNP/index.snp.LD.txt"),
+        stats = join(GREGOR_outputDir, "StatisticSummaryFile.txt")
+    params:
+        gregor_version_path = config['PARAMETERS']['gregor_version_path']
+    threads:
+        config['PARAMETERS']['cores']
+    shell:
+        r"""
+        ionice -c2 -n7 {params.gregor_version_path} --conf {input.conf}
+        """
+
+rule getGREGOR_results:
+    input:
+        stats = rules.runGREGOR.output.stats,
+        ld = rules.runGREGOR.output.ld,
+    output:
+        stats = join(GREGOR_BASE_DIR, "output",
+                     "results__{sample}__{trait}__ld{gregor_r2}.txt"),
+        ld = join(GREGOR_BASE_DIR, "output",
+                  "ld__{sample}__{trait}__ld{gregor_r2}.txt")
+    shell:
+        """
+        cp {input.stats} {output.stats}
+        cp {input.ld} {output.ld}
+        """

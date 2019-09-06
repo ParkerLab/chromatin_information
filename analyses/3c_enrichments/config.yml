@@ -1,0 +1,46 @@
+results: "work"
+
+# Input files
+high_low_fvice_dir: ../1f_fvices/work/output
+high_low_fvice_handle: _fvice_motifs_per_sample.new_vplots.trim.txt
+
+DIRECTORIES :
+  gregor_base_dir: "work/gregor_eqtl"
+  gregor_dir: "work/gregor_eqtl/{sample}"
+  output_dir: "output_{trait}.ld{gregor_r2}"
+  annot_dir: "../../data/eqtl/annotations/{sample}"
+
+DATA :
+  input_snps: "../../data/eqtl/input/{trait}.txt"
+  output: "enrichment_stats.txt"
+    
+PARAMETERS: 
+  gregor_version_path: "PLACEHOLDER"
+  config_name: "enrich.{trait}.ld{gregor_r2}.conf"
+  POPULATION: "EUR"
+  TRAITS:
+    - geuvadis.fdr0.05.prune0.8.maf0.0.ld0.99
+    - gtex.fdr0.05.prune0.8.maf0.0.ld0.99
+    - gtex.fdr0.05.prune0.8.maf0.2.ld0.99
+  gregor_r2: 0.99  # eQTLs
+  cores: 4
+  nameFieldSeparator: '.'
+  jobFieldSeparator: '.'
+  header: "trait ld r2 cell feature model chromatinState overlap \
+           expected_overlap pval"
+    
+SCRIPTS: 
+  makeConfFile: "../../bin/gregor_makeConf.py"
+
+samples:
+    ## Benrostro GM12878
+    buenrostro_rep1:
+        genome: hg19
+        celltype: GM12878
+        depth: 81542401    
+
+    ## Parker GM12878
+    lab_gm12878:
+        genome: hg19
+        celltype: GM12878
+        depth: 24125302
