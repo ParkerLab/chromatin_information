@@ -8,9 +8,9 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
     - [x] Motif scans
     - [x] 6-mer scans
     - [x] ChIP-seq bound motifs (GM12878)
-    - [ ] Motif f-VICEs
-    - [ ] 6-mer f-VICEs
-    - [ ] Asymmetry
+    - [x] Motif f-VICEs
+    - [x] 6-mer f-VICEs
+    - [x] Asymmetry
     - [ ] Protein domains
     - [ ] FRAP times
 - [ ] Auxiliary scripts
