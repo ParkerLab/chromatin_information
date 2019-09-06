@@ -11,6 +11,7 @@ _A companion repository_
     - [ ] Protein domains
     - [ ] FRAP times
 - [ ] Auxiliary scripts
+    - [ ] conda environment
     - [ ] install_dependencies.R
     - [ ] download_fastq.sh
     - [ ] download_processed_files.sh
@@ -24,6 +25,7 @@ _A companion repository_
     - [ ] 2f_asymmetry
     - [ ] 3c_enrichments
     - [ ] 3efg_6mers
+    - [ ] supp_hepg2
 
 ## Description
 This repository will allow you to generate all the main figures from our manuscript.
