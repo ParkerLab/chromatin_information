@@ -1,0 +1,144 @@
+from os.path import join
+
+
+def get_motifs():
+    """List all motifs"""
+    for motif in open(motif_file, 'r').readlines():
+        motif = motif.strip()
+        motif_f = join(
+            VPLOT_DIR.format(sample="lab_gm12878"),
+            "{}.vsignal.gz".format(motif)
+        )
+        if os.path.exists(motif_f):
+            yield motif
+        else:
+            print("Skipping {}".format(motif))
+
+
+# Config
+samples = config["samples"]
+motif_file = config["motif_file"]
+tss_file = config["tss_file"]
+cage_file = config["cage_file"]
+
+# Directories
+WORK_DIR = config["results"]
+BAM_dir = config["bam_dir"]
+BOUND_dir = config["bmo_bound_dir"]
+VPLOT_DIR = config["vplot_dir"]
+
+ASYMM_ALL = join(WORK_DIR, "vplot_asymmetry", "{sample}")
+ASYMM_TSS = join(WORK_DIR, "vplot_asymmetry_cage10", "{sample}")
+
+
+# Wildcards
+motifs = get_motifs()
+# motifs = "PAX4_5"
+
+rule all:
+    input:
+        expand(join(ASYMM_ALL, "{motif}.everything.RData"),
+               sample=samples, motif=motifs),
+        expand(join(ASYMM_TSS, "{motif}.bound.nearest_tss.bed"),
+               sample=samples, motif=motifs),
+        expand(join(ASYMM_TSS, "vplots", "{motif}.proximal.png"),
+               sample=samples, motif=motifs),
+        expand(join(ASYMM_TSS, "vplots", "{motif}.distal.png"),
+               sample=samples, motif=motifs),
+
+
+rule get_asymmetry:
+    input:
+        join(VPLOT_DIR, "{motif}.vsignal.gz"),
+    output:
+        join(ASYMM_ALL, "{motif}.everything.RData"),
+    params:
+        script = "bin/f-vices/vplot_permutation_ver2.R",
+        handle = join(ASYMM_ALL, "{motif}"),
+        name = "{motif}",
+        size = 10000
+    threads:
+        4
+    shell:
+        """
+        ionice -c2 -n7 Rscript {params.script} -f {input} -o {params.handle} \
+            -n {params.name} -p {threads} -s {params.size}
+        """
+
+rule make_tss_file:
+    input:
+        tss = tss_file,
+        cage = cage_file,
+    output:
+        join(RESULTS, "gencodeV19_tss_with_LCL_cage_tag_clusters.bed"),
+    shell:
+        """
+        intersectBed -a {input.tss} -b {input.cage} > {output}
+        """
+
+rule nearest_tss:
+    input:
+        motif = join(BOUND_dir, "{motif}.bed"),
+        tss = rules.make_tss_file.output,
+    output:
+        join(ASYMM_TSS, "{motif}.bound.nearest_tss.bed"),
+    shell:
+        """
+        ionice -c2 -n7 sortBed -i {input.tss} | \
+            closestBed -t first -D a -a {input.motif} -b stdin > {output}
+        """
+
+rule tss_prox_dist:
+    input:
+        rules.nearest_tss.output,
+    output:
+        prox = join(ASYMM_TSS, "{motif}.bound.nearest_tss.proximal.bed"),
+        dist = join(ASYMM_TSS, "{motif}.bound.nearest_tss.distal.bed"),
+    shell:
+        """
+        ionice -c2 -n7 awk 'sqrt($13^2) <= 1000 {{print}}' {input} \
+            > {output.prox} &&
+        ionice -c2 -n7 awk 'sqrt($13^2) > 10000 {{print}}' {input} \
+            > {output.dist}
+        """
+
+rule vsignal_tss:
+    input:
+        bam = join(BAM_dir, "{sample}.pruned.bam"),
+        prox = rules.tss_prox_dist.output.prox,
+        dist = rules.tss_prox_dist.output.dist,
+    output:
+        prox = join(ASYMM_TSS, "vplots", "{motif}.proximal.vsignal.gz"),
+        dist = join(ASYMM_TSS, "vplots", "{motif}.distal.vsignal.gz"),
+    threads:
+        5
+    params:
+        "-r 500 -f 3 -F 4 -F 8 -q 30"
+    shell:
+        """
+        ionice -c2 -n7 measure_signal -p {threads} {params} {input.bam} \
+            {input.prox} | gzip -c > {output.prox}
+        ionice -c2 -n7 measure_signal -p {threads} {params} {input.bam} \
+            {input.dist} | gzip -c > {output.dist}
+
+        """
+
+rule vplot_tss:
+    input:
+        prox = rules.vsignal_tss.output.prox,
+        dist = rules.vsignal_tss.output.dist,
+    output:
+        prox = join(ASYMM_TSS, "vplots", "{motif}.proximal.png"),
+        dist = join(ASYMM_TSS, "vplots", "{motif}.distal.png"),
+    params:
+        h_prox = join(ASYMM_TSS, "vplots", "{motif}.proximal"),
+        n_prox = "{sample}" + "_{motif}_proximal",
+        h_dist = join(ASYMM_TSS, "vplots", "{motif}.distal"),
+        n_dist = "{sample}" + "_{motif}_distal",
+    shell:
+        """
+        Rscript ~albanus/scripts/makeVplots.R -f {input.prox} \
+            -o {params.h_prox} -n {params.n_prox} --ylim 1.0
+        Rscript ~albanus/scripts/makeVplots.R -f {input.dist} \
+            -o {params.h_dist} -n {params.n_dist} --ylim 1.0
+        """

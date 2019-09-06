@@ -1,0 +1,10 @@
+results: "work"
+bam_dir: "../0_mapping/work/prune"
+bmo_bound_dir: "../1f_fvices/work/bound_no_overlap/{sample}"
+vplot_dir: "../1f_fvices/work/vplots/{sample}"
+motif_file: "../../data/motif_list.trimmed.txt"
+tss_file: "../../data/annot/tsslist_gencodev19.bed"
+cage_file: 
+    "../../data/lcl_cage_tcs/tc_paraclu.LCL.tpmThresh2singletonThresh2.minExpIn10.noblacklist.bed"
+samples: 
+    - "lab_gm12878"

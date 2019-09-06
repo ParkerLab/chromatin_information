@@ -21,8 +21,8 @@ _A companion repository_
     - [x] 1e_bmo
         - [x] PIQ
     - [x] 1f_fvices
-    - [ ] 2b_ctcf-cohesin
-    - [ ] 2f_asymmetry
+    - [x] 2b_ctcf-cohesin
+    - [x] 2f_asymmetry
     - [ ] 3c_enrichments
     - [ ] 3efg_6mers
     - [ ] supp_hepg2
@@ -35,12 +35,12 @@ Each folder inside `figures` points to a main figure and its related supplementa
 
 ## Requirements
 ### Using our conda environment
-Assuming that you have a 64-bit system, on Linux, download and install Anaconda 3:
+Assuming that you have a Linux 64-bit system download and install Anaconda 3:
 ```sh
 wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
 bash Anaconda3-5.0.1-Linux-x86_64.sh
 ```
-Then, create the environment:
+Create the environment:
 ```sh
 conda env create --name chromatin_information --file environment.yaml
 source activate chromatin_information
