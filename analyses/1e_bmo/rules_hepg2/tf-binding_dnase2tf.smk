@@ -6,8 +6,8 @@ rule make_d2tf_input:
             subsampled_bam_names_from_depth(wildcards.sample, wildcards.depth)
         )
     output:
-        linked = "work/DNase2TF/{sample}/input/{sample}.{depth}.bam",
-        ok_file = "work/DNase2TF/{sample}/input/{sample}.{depth}/done.ok"
+        linked = join(D2TF_DIR, "{sample}/input/{sample}.{depth}.bam"),
+        ok_file = join(D2TF_DIR, "{sample}/input/{sample}.{depth}/done.ok"),
     params:
         r_script = join(config["dnase2tf_dir"], "dependencies",
                         "bam_compact_split_util",
@@ -18,34 +18,36 @@ rule make_d2tf_input:
         """
         ln -sf {input} {output.linked}
         ln -sf {input}.bai {output.linked}.bai
-        ionice -c2 -n7 Rscript {params} {output.linked} &&\
+        ionice -c2 -n7 Rscript {params} {output.linked} && \
         touch {output.ok_file}
         """
 
 rule offset_for_atac:
     input:
-        done = "work/DNase2TF/{sample}/input/{sample}.{depth}/done.ok"
+        done = join(D2TF_DIR, "{sample}/input/{sample}.{depth}/done.ok")
     output:
-        "work/DNase2TF/{sample}/input/{sample}.{depth}_offset/done.ok"
+        join(D2TF_DIR, "{sample}/input/{sample}.{depth}_offset/done.ok")
     params:
         offset = "../../bin/dnase2tf_offset.py",
-        indir = "work/DNase2TF/{sample}/input/{sample}.{depth}",
-        outdir = "work/DNase2TF/{sample}/input/{sample}.{depth}_offset"
+        indir = join(D2TF_DIR, "{sample}/input/{sample}.{depth}"),
+        outdir = join(D2TF_DIR, "{sample}/input/{sample}.{depth}_offset"),
     resources:
         io_limit = 1
     shell:
         """
         for f in `ls {params.indir}/*.txt`; \
-            do base=`basename ${{f}}`; out="{params.outdir}/${{base}}";\
+        do base=`basename ${{f}}`; \
+            out="{params.outdir}/${{base}}";\
             ionice -c2 -n7 python {params.offset} ${{f}} > ${{out}}; \
         done && touch {output}
         """
 
 rule dinucleotide_table:
     input:
-        "work/subsampled_bam/{sample}.{depth}M.bam"
+        join(BAM_SUB_DIR, "{sample}.{depth}M.bam"),
     output:
-        "work/DNase2TF/{sample}/input/dinuc_freq_table_ac_{sample}.{depth}M.txt"
+        join(D2TF_DIR, "{sample}", "input",
+             "dinuc_freq_table_ac_{sample}.{depth}M.txt")
     params:
         calcDFT = "../../bin/calcDFT",
         hg19 = config["hg19_dir"]
@@ -54,7 +56,8 @@ rule dinucleotide_table:
     shell:
         """
         ionice -c2 -n7 {params.calcDFT} {params.hg19} {input} &&\
-        mv dinuc_freq_table_ac_{wildcards.sample}.{wildcards.depth}M.txt {output}
+        mv dinuc_freq_table_ac_{wildcards.sample}.{wildcards.depth}M.txt \
+            {output}
         """
 
 rule prepare_peaks:
@@ -69,15 +72,11 @@ rule prepare_peaks:
 
 rule DNase2TF:
     input:
-        dft = os.path.join(
-            "work/DNase2TF/{sample}",
-            "input/dinuc_freq_table_ac_{sample}.{depth}M.txt"
-        ),
+        dft = join(D2TF_DIR, "{sample}", "input",
+                   "dinuc_freq_table_ac_{sample}.{depth}M.txt"),
         peaks = rules.prepare_peaks.output,
-        indir = os.path.join(
-            "work/DNase2TF/{sample}",
-            "input/{sample}.{depth}_offset/done.ok"
-        )
+        indir = join(D2TF_DIR, "{sample}", "input",
+                     "{sample}.{depth}_offset/done.ok")
     output:
         protected(
             os.path.join(
@@ -86,11 +85,9 @@ rule DNase2TF:
             )
         )
     params:
-        script = "../../bin/run_d2tf.R"
-        bam_handle = os.path.join(
-            "work/DNase2TF/{sample}",
-            "input/{sample}.{depth}_offset/{sample}.{depth}"
-        ),
+        script = "../../bin/run_d2tf.R",
+        bam_handle = join(D2TF_DIR, "{sample}",
+                          "input/{sample}.{depth}_offset/{sample}.{depth}"),
         out = os.path.join(D2TF_DIR, "{sample}/output/{sample}.{depth}")
     shell:
         """

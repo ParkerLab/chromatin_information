@@ -1,0 +1,16 @@
+results: "work/hepg2"
+chip_assoc: "../../data/chipseq_associations_hepg2.txt"
+chip_dir: "../../data/chipseq_hepg2"
+motif_dir: "../../data/motif_scans"
+hg19_dir: "/lab/data/reference/human/hg19/"
+dnase2tf_dir: "~/software/DNase2TF"
+
+samples:
+    hepg2_3:
+        bamfile: "../0_mapping/work/prune/hepg2_3.pruned.bam"
+        genome: "hg19"
+        depth: 34277315
+    hepg2_1:
+        bamfile: "../0_mapping/work/prune/hepg2_1.pruned.bam"
+        genome: "hg19"
+        depth: 31884529

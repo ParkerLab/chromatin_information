@@ -1,13 +1,10 @@
-results: 
-    "work"
-motif_file: 
-    ../../data/motifs_with_chipseq_gm12878.txt
-motif_dir: 
-    "../../data/motifs_scans"
-chip_assoc:
-    "../../data/chipseq_associations_gm12878.txt"
-bound_motifs:
-    "../../data/chipseq_bound_motifs_gm12878"
+results: "work/gm12878"
+motif_file: "../../data/motifs_with_chipseq_gm12878.txt"
+motif_dir: "../../data/motifs_scans"
+chip_assoc: "../../data/chipseq_associations_gm12878.txt"
+bound_motifs: "../../data/chipseq_bound_motifs_gm12878"
+dnase2tf_dir: "~/software/DNase2TF"
+hg19_dir: "/lab/data/reference/human/hg19/"
 
 samples:
     buenrostro_rep1:

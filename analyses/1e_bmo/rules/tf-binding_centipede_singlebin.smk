@@ -17,8 +17,9 @@ rule make_cut_matrix_sb:
         io_limit = 1
     shell:
         """
-        ionice -c2 -n7 make_cut_matrix -p {threads} {params} {input.bam} \
-            {input.motif} | awk '{{print $1+$2+$3+$4}}' | gzip -c > {output}
+        ionice -c2 -n7 ../../bin/make_cut_matrix -p {threads} {params} \
+            {input.bam} {input.motif} | awk '{{print $1+$2+$3+$4}}' | \
+            gzip -c > {output}
         """
 
 rule centipede_sb:
@@ -36,6 +37,6 @@ rule centipede_sb:
         score_column = 5
     shell:
         """
-        ionice -c2 -n7 Rscript ~/scripts/run_centipede.R {input.matrix} \
+        ionice -c2 -n7 Rscript ../../bin/run_centipede.R {input.matrix} \
             {input.motif} {output} {params}
         """

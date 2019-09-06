@@ -11,8 +11,9 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
     - [x] Motif f-VICEs
     - [x] 6-mer f-VICEs
     - [x] Asymmetry
-    - [ ] Protein domains
-    - [ ] FRAP times
+    - [x] TF-binding comparisons
+    - [x] Protein domains
+    - [x] FRAP times
 - [ ] Auxiliary scripts
     - [ ] conda environment
     - [ ] install_dependencies.R
@@ -28,17 +29,21 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
     - [x] 2f_asymmetry
     - [x] 3c_enrichments
     - [x] 3efg_6mers
-    - [ ] supp_hepg2
+    - [x] supp_hepg2
 
 ## Description
 This repository will allow you to generate all the main figures from our manuscript.
 
 ## Usage
-Each folder inside `figures` points to a main figure and its related supplementary figures. Follow the instructions inside each one to perform the analyses.
+### Browsing processed results
+The `notebooks_processed` folder contains a Rmd (R Markdown) file for each set of analyses. Just open these files in RStudio and knit the html output.
+### Generating results from scratch
+1. Go to each of the `analyses` subfolders **in order** and run the commands described in the README.
+2. Go to the `notebooks_local` folder and execute the Rmd files. They should be able to knit the html output once step 1 is complete.
 
 ## Requirements
 ### Using our conda environment
-Assuming that you have a Linux 64-bit system download and install Anaconda 3:
+Assuming that you have a Linux 64-bit system, download and install Anaconda 3:
 ```
 wget https://repo.continuum.io/archive/Anaconda3-5.0.1-Linux-x86_64.sh
 bash Anaconda3-5.0.1-Linux-x86_64.sh

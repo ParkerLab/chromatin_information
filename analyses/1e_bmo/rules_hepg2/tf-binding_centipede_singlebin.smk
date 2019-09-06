@@ -1,33 +1,36 @@
 ## CENTIPEDE
-rule make_cut_matrix:
+rule make_cut_matrix_sb:
     input:
         motif = os.path.join(MOTIF_DIR, "{motif}.bed.gz"),
         bam = os.path.join(BAM_SUB_DIR, "{sample}.{depth}M.bam"),
     output:
         temp(
             os.path.join(
-                CENTI_DIR, "{sample}", "matrices", "{motif}.{depth}.matrix.gz"
+                CENTI_SB_DIR, "{sample}", "matrices", 
+                "{motif}.{depth}.matrix.gz"
             )
         )
     params:
-        "-v -d -r 100 -f 3 -F 4 -F 8 -q 30"
-    threads: 10
+        "-v -d -r 100 --bins '(1-10000 100)' -f 3 -F 4 -F 8 -q 30"
+    threads: 4
     resources:
         io_limit = 1
     shell:
         """
         ionice -c2 -n7 ../../bin/make_cut_matrix -p {threads} {params} \
-            {input.bam} {input.motif} | gzip -c > {output}
+            {input.bam} {input.motif} | awk '{{print $1+$2+$3+$4}}' | \
+            gzip -c > {output}
         """
 
-rule centipede:
+rule centipede_sb:
     input:
         motif = os.path.join(MOTIF_DIR, "{motif}.bed.gz"),
-        matrix = rules.make_cut_matrix.output
+        matrix = rules.make_cut_matrix_sb.output
     output:
         protected(
             os.path.join(
-                CENTI_DIR, "{sample}", "posteriors", "{motif}.{depth}.bed.gz"
+                CENTI_SB_DIR, "{sample}", "posteriors", 
+                "{motif}.{depth}.bed.gz"
             )
         )
     params:
