@@ -1,0 +1,23 @@
+results: work
+motif_dir: ../../data/motif_scans
+motif_ext: bed.gz
+motif_file: ../../data/motif_list.trimmed.txt
+samples:
+    lab_gm12878:
+        bamfile: ../0_mapping/work/prune/lab_gm12878.pruned.bam
+    buenrostro_rep1:
+        bamfile: ../0_mapping/work/prune/buenrostro_rep1.pruned.bam
+    hepg2_3:
+        bamfile: ../0_mapping/work/prune/hepg2_3.pruned.bam
+    hepg2_1:
+        bamfile: ../0_mapping/work/prune/hepg2_1.pruned.bam
+    abcu196_4:
+        bamfile: ../0_mapping/work/prune/abcu196_4.pruned.bam
+    alpha3:
+        bamfile: ../0_mapping/work/prune/alpha3.pruned.bam
+    beta3:
+        bamfile: ../0_mapping/work/prune/beta3.pruned.bam
+    cd4_87:
+        bamfile: ../0_mapping/work/prune/cd4_87.pruned.bam
+    cd4_88:
+        bamfile: ../0_mapping/work/prune/cd4_88.pruned.bam

@@ -20,7 +20,7 @@ _A companion repository_
     - [x] 1bcd_vplots
     - [x] 1e_bmo
         - [x] PIQ
-    - [ ] 1f_fvices
+    - [x] 1f_fvices
     - [ ] 2b_ctcf-cohesin
     - [ ] 2f_asymmetry
     - [ ] 3c_enrichments

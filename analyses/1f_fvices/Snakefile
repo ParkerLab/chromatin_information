@@ -1,0 +1,195 @@
+#! /usr/bin/env python
+#
+# The Parker Lab (theparkerlab.org)
+# University of Michigan, Ann Arbor
+#
+
+from os.path import join
+
+###
+# HELPER FUNCTIONS
+#
+
+
+def get_motifs():
+    """List all motifs"""
+    for motif in open(config['motif_file'], 'r').readlines():
+        motif_id = motif.strip()
+        motif_f = os.path.join(
+            config["motif_dir"], "{}.{}".format(motif_id, config["motif_ext"])
+        )
+        if os.path.exists(motif_f):
+            yield motif_id
+        else:
+            print("Could not find {}. Proceeding with others".format(motif_f))
+
+
+def get_samples():
+    """List all samples"""
+    for sample in sorted(config['samples'].keys()):
+        yield sample
+
+
+def get_peaks(sample):
+    """
+    Get peak file associated with sample from the config or use default 
+    directory
+    """
+    try:
+        peakfile = config["samples"][sample]["peakfile"]
+    except KeyError:
+        peakfile = "../0_mapping/macs2/{}_peaks.broadPeak.noblacklist".format(
+            sample
+        )
+    return peakfile
+
+
+###
+# PIPELINE
+#
+
+# Desired output
+#
+
+rule all:
+    input:
+        expand(config['results'] + "/vplots/{sample}/{motif}.png",
+               sample=get_samples(), motif=get_motifs())
+
+rule all_fvices:
+    input:
+        expand(config['results'] +
+               "/output/{sample}.fvice.out", sample=get_samples())
+
+
+
+rule measure_raw_signal:
+    input:
+        motif = lambda wildcards: "{}/{}.{}".format(
+            config['motif_dir'], wildcards.motif, config["motif_ext"]
+            ),
+        bam = lambda wildcards: config["samples"][wildcards.sample]["bamfile"]
+    output:
+        config['results'] + "/raw_signals/{sample}/all_regions/{motif}.bed"
+    threads: 15
+    resources:
+        io_limit = 1
+    shell:
+        """
+        ionice -c2 -n7 ~albanus/scripts/measureRawSignal.py -p {threads} \
+            -b {input.bam} -m {input.motif} > {output}
+        """
+
+rule motifs_outside_peaks:
+    input:
+        motif = rules.measure_raw_signal.output,
+        peaks = lambda wildcards: get_peaks(wildcards.sample)
+    output:
+        config['results'] + "/raw_signals/{sample}/outside_peaks/{motif}.bed"
+    shell:
+        """
+        ionice -c2 -n7 intersectBed -v -a {input.motif} \
+            -b {input.peaks} > {output}
+        """
+
+rule count_overlapping_motifs:
+    input:
+        rules.measure_raw_signal.output
+    output:
+        config['results'] + "/raw_signals/{sample}/co_occurring/{motif}.bed"
+    params:
+        100
+    shell:
+        """
+        ionice -c2 -n7 ../../bin/count_co-occuring_motifs.sh {input} \
+            {params} > {output}
+        """
+
+rule fit_nbinoms:
+    input:
+        raw_signal = rules.measure_raw_signal.output,
+        motif_counts = rules.count_overlapping_motifs.output,
+        outside_peaks = rules.motifs_outside_peaks.output
+    output:
+        config['results'] + "/negative_binomials/{sample}/{motif}.bed.gz"
+    params:
+        in_handle = "{motif}.bed",
+        out_handle = config['results'] + \
+            "/negative_binomials/{sample}/{motif}",
+        d1 = config['results'] + "/raw_signals/{sample}/all_regions/",
+        d2 = config['results'] + "/raw_signals/{sample}/outside_peaks/"
+    shell:
+        """
+        ionice -c2 -n7 Rscript ../../bin/rawSigNBModel.R \
+            -f {params.in_handle} --dir1 {params.d1} --dir2 {params.d2} \
+            -o {params.out_handle} -c 7 --writeBed
+        """
+
+rule BMO:
+    input:
+        atac_nb = rules.fit_nbinoms.output,
+        motif_counts = rules.count_overlapping_motifs.output
+    output:
+        config['results'] + "/bmo/{sample}/bound/{motif}.bound.bed"
+    params:
+        bmo_output_dir = config['results'] + "/bmo/{sample}"
+    threads:
+        1
+    shell:
+        """
+        ionice -c2 -n7 Rscript ../../bin/bmo.R --f1 {input.atac_nb} \
+            --f2 {input.motif_counts} -o {params.bmo_output_dir} \
+            -n {wildcards.motif} -p {threads}
+        """
+
+rule filter_co_occurring:
+    input:
+        rules.BMO.output
+    output:
+        join(config['results'], "bound_no_overlap", "{sample}", "{motif}.bed")
+    shell:
+        """
+        ionice -c2 -n7 ../../bin/filter_bed_co-occurring.py -i {input} \
+            -d 500 -c 5 -t strict > {output}
+        """
+
+rule vsignal:
+    input:
+        bam = lambda wildcards: config["samples"][wildcards.sample]["bamfile"],
+        motif = rules.filter_co_occurring.output
+    output:
+        vsignal = config['results'] + "/vplots/{sample}/{motif}.vsignal.gz"
+    threads:
+        8
+    params:
+        "-r 500 -f 3 -F 4 -F 8 -q 30"
+    resources:
+        io_limit = 1
+    shell:
+        """
+        ionice -c2 -n7 ../../bin/measure_signal -p {threads} {params} \
+            {input.bam} {input.motif} | gzip -c > {output}
+        """
+
+rule vplot:
+    input:
+        rules.vsignal.output
+    output:
+        config['results'] + "/vplots/{sample}/{motif}.png"
+    params:
+        handle = config['results'] + "/vplots/{sample}/{motif}",
+        name = "{sample}" + "_{motif}"
+    shell:
+        """
+        Rscript ../../bin/makeVplots.R -f {input} -o {params.handle} \
+            -n {params.name} --ylim 1.0
+        """
+
+
+rule fetch_fvices:
+    input:
+        config['results'] + "/vplots/{sample}"
+    output:
+        config['results'] + "/output/{sample}.fvice.out"
+    shell:
+        "ionice -c2 -n7 python ../../bin/get_fvice.py {input} {output}"
