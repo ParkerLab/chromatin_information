@@ -4,7 +4,16 @@ _A companion repository_
 Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Peter Orchard, Jacob O. Kitzman, Stephen C. J. Parker
 
 ## To-do
-- [ ] Processed data
+- [ ] Auxiliary scripts
+    - [ ] conda environment
+    - [ ] install_dependencies.R
+    - [ ] download_fastq.sh
+    - [ ] download_processed_files.sh
+- [ ] Notebooks
+    - [ ] Figure 1
+    - [ ] Figure 2
+    - [ ] Figure 3
+- [x] Processed data
     - [x] Motif scans
     - [x] 6-mer scans
     - [x] ChIP-seq bound motifs (GM12878)
@@ -14,22 +23,17 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
     - [x] TF-binding comparisons
     - [x] Protein domains
     - [x] FRAP times
-- [ ] Auxiliary scripts
-    - [ ] conda environment
-    - [ ] install_dependencies.R
-    - [ ] download_fastq.sh
-    - [ ] download_processed_files.sh
-- [ ] Analyses and notebooks
+- [x] Analyses
     - [x] 0_mapping
     - [x] 1bcd_vplots
     - [x] 1e_bmo
         - [x] PIQ
+        - [x] HepG2
     - [x] 1f_fvices
     - [x] 2b_ctcf-cohesin
     - [x] 2f_asymmetry
     - [x] 3c_enrichments
     - [x] 3efg_6mers
-    - [x] supp_hepg2
 
 ## Description
 This repository will allow you to generate all the main figures from our manuscript.
