@@ -69,4 +69,4 @@ All requirements (except for Slurm) are included in the conda virtual environmen
 
 ## Contact
 * For questions directly about the paper, the corresponding author is Dr. Stephen C.J. Parker (scjp@umich.edu).
-* If anything here is (or feels) broken or you just have questions regarding how to set up the analyses, contact me directly at albanus@umich.edu.
+* If anything here is (or feels) broken or you just have questions regarding how to set up the analyses, contact Ricardo Albanus directly at albanus@umich.edu.
