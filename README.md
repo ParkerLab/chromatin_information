@@ -31,7 +31,7 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
         - [x] HepG2
     - [x] 1f_fvices
     - [x] 2bc_ctcf-cohesin
-    - [ ] 2e_mnase
+    - [x] 2e_mnase
     - [x] 2f_asymmetry
     - [x] 3c_enrichments
     - [x] 3efg_6mers

@@ -1,0 +1,11 @@
+results: "work"
+ionice: "ionice -c2 -n7"
+sra_prefetch: "~/ncbi/public/sra"
+bwa_index: "../../data/bwa_index/hg19"
+motif_file: "../../data/motif_list.trimmed.txt"
+bmo_dir: ""../1e_fvices/work//bmo/{sample}/bound"
+samples: 
+    - "lab_gm12878"
+accessions: 
+    - "SRR452483"
+

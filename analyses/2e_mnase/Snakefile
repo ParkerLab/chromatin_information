@@ -1,0 +1,173 @@
+from os.path import join
+
+# Helper functions
+def get_motifs():
+    # yield "CTCF_known2"
+    with open(motif_file, "r") as data_stream:
+        for motif in data_stream:
+            if motif.strip() != "SOX10_6":
+                yield motif.strip()
+
+
+# Config
+motif_file =config["motif_file"]
+samples = config["samples"]
+accessions = config["accessions"]
+ionice = config["ionice"]
+autosomes = ['chr{}'.format(i) for i in range(1, 23)]
+
+# Directories
+outdir = config["results"]
+PREFETCH_DIR = config["sra_prefetch"]
+BMO = config["bmo_dir"]
+MD_DIR = join(outdir, "mark_duplicates")
+PRUNE_DIR = join(outdir, "prune")
+BAM_DIR = join(outdir, "prune")
+BED_DIR = join(outdir, "bedfiles_motifs_250bp", "{sample}")
+NGS_DIR = join(outdir, "ngsplot_per_motif_250bp", "{sample}")
+
+
+# Main calls
+rule all:
+    input:
+        expand(join(PRUNE_DIR, "{SRR}.pruned.bam"), SRR=accessions),
+        expand(join(PRUNE_DIR, "{SRR}.pruned.nucleosome.bam"), SRR=accessions),
+        expand(join(NGS_DIR, "{accession}__{motif}.zip"),
+               sample=samples, accession=accessions, motif=get_motifs()),
+
+
+# Rules
+rule get_sra:
+    output:
+        join(PREFETCH_DIR, "{SRR}.sra")
+    params:
+        srr = "{SRR}"
+    shell:
+        """
+        prefetch {params.srr}
+        """
+
+rule fetch_fastq:
+    input:
+        rules.get_sra.output,
+    output:
+        r1 = join("data", "fastq", "{SRR}_1.fastq.gz"),
+        r2 = join("data", "fastq", "{SRR}_2.fastq.gz")
+    params:
+        sra = "{SRR}",
+        dir = join("data", "fastq")
+    shell:
+        """
+        {ionice} fastq-dump --split-files --gzip -O {params.dir} {params.sra}
+        """
+
+rule map:
+    input:
+        r1 = rules.fetch_fastq.output.r1,
+        r2 = rules.fetch_fastq.output.r2,
+        index = config["bwa_index"],
+    output:
+        join("work", "bwa", "{SRR}.bam")
+    threads:
+        4
+    params:
+        sort_tmp = join("work", "bwa", '{SRR}.sort.tmp'),
+        rg = '\\t'.join(['@RG', 'ID:{}'.format('{SRR}'),
+                         'LB:{}'.format('{SRR}')])
+    shell:
+        """
+        {ionice} bwa mem -M -R '{params.rg}' -t {threads} {input.index} \
+            {input.r1} {input.r2} | samtools sort -m 1g -@ {threads} -O bam \
+            -T {params.sort_tmp} -o {output} -
+        {ionice} samtools index {output}
+        """
+
+rule mark_duplicates:
+    input:
+        bam = rules.map.output,
+    output:
+        bam = join(MD_DIR, '{SRR}.md.bam'),
+        bai = join(MD_DIR, '{SRR}.md.bam.bai'),
+    params:
+        metrics = join(MD_DIR, '{SRR}.metrics'),
+        tmp_dir = MD_DIR
+    shell:
+        """
+        {ionice} picard -m 4g MarkDuplicates I={input.bam} O={output.bam} \
+            ASSUME_SORTED=true METRICS_FILE={params.metrics} \
+            VALIDATION_STRINGENCY=LENIENT TMP_DIR={params.tmp_dir}
+        {ionice} samtools index {output.bam}
+        """
+
+rule prune:
+    input:
+        bam = join(MD_DIR, '{SRR}.md.bam'),
+        bam_index = join(MD_DIR, '{SRR}.md.bam.bai')
+    output:
+        bam = join(PRUNE_DIR, '{SRR}.pruned.bam'),
+        bam_index = join(PRUNE_DIR, '{SRR}.pruned.bam.bai')
+    params:
+        flags = "-f 3 -F 4 -F 8 -F 256 -F 1024 -F 2048",
+        mapq = 30,
+        autosomes = autosomes,
+        io_limit = 1
+    shell:
+        """
+        {ionice} samtools view -b -h {params.flags} -q {params.mapq} \
+            {input.bam} {params.autosomes} > {output.bam}
+        {ionice} samtools index {output.bam}
+        """
+
+rule prune_by_size:
+    input:
+        rules.prune.output.bam
+    output:
+        bam = join(PRUNE_DIR, '{SRR}.pruned.nucleosome.bam'),
+        bam_index = join(PRUNE_DIR, '{SRR}.pruned.nucleosome.bam.bai')
+    params:
+        # perl script filter reads based on fragment size
+        # and keep header intact
+        perl = (r"'print $_ if (/^\@/ || /XT:A:U/);"
+                r"my @d=split; print if (abs($d[8])>=145 & abs($d[8])<=149)'")
+    shell:
+        """
+        {ionice} samtools view -h {input} | perl -ne {params.perl} | \
+            samtools view -b > {output.bam}
+        {ionice} samtools index {output.bam}
+        """
+
+# Pipeline
+rule makeBedFiles:
+    input:
+        join(BMO, "{motif}.bound.bed"),
+    output:
+        join(BED_DIR, "{motif}.bed"),
+    params:
+        filt_script = "../../bin/filter_bed_co-occurring.py",
+        filt_flags = "-i - -d 250 -t 'strict' -c 4",
+        midpoint_script = "../../bin/midpointBed"
+    resources:
+        io_limit = 1
+    shell:
+        """
+        {ionice} cut -f 1-3,5 {input} |
+            sort -k1,1 -k2,2n |
+            {params.filt_script} {params.filt_flags} |
+            {params.midpoint_script} > {output}
+        """
+
+rule ngs_plot:
+    input:
+        bed = rules.makeBedFiles.output,
+        bam = join(BAM_DIR, "{accession}.pruned.nucleosome.bam")
+    output:
+        join(NGS_DIR, "{accession}__{motif}.zip")
+    params:
+        outname = join(NGS_DIR, "{accession}__{motif}")
+    threads:
+        10
+    shell:
+        """
+        {ionice} ngs.plot.r -G hg19 -R bed -E {input.bed} -C {input.bam} \
+            -O {params.outname} -L 250 -FL 147 -GO km -P {threads}
+        """
