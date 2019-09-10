@@ -1,0 +1,464 @@
+---
+title: "Figure 3C"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(knitr)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+source("../bin/R_rainclouds.R")
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+samples <- c("lab_gm12878", "buenrostro_rep1","abcu196_4", "hepg2_3")
+labs <- c("GM12878\n(this study)", "GM12878\n(Buenrostro)", 
+          "Pancreatic islets", "HepG2 1")
+
+kmer_fvices = data.frame()
+for(sample in samples){
+  infile <- sprintf("../data/processed/6-mers/%s.fvice.out", sample) 
+  kmer_fvice_partial <- read.table(infile, header = T) %>% 
+    mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual) %>% 
+    rename(kmer = motif) %>% 
+    mutate(sample = sample,
+           quantile = ntile(residual, 10))
+  kmer_fvices <- bind_rows(kmer_fvices, kmer_fvice_partial)
+  rm(kmer_fvice_partial)
+}
+
+# Make data frame with only relevant information and include reverse complements
+kmer_fvices_trimmed <- kmer_fvices %>% select(kmer, pchart, residual, quantile, sample)
+kmer_fvices_trimmed_rc <- kmer_fvices_trimmed %>% 
+  mutate(kmer = chartr("ATCG", "TAGC", kmer)) %>% 
+  mutate(kmer = stringi::stri_reverse(kmer))
+kmer_fvices_trimmed <- bind_rows(kmer_fvices_trimmed, kmer_fvices_trimmed_rc) %>% 
+  distinct()
+rm(kmer_fvices_trimmed_rc)
+```
+
+##  Confirm that lm normalization worked
+```{r, fig.width=4}
+ggplot(kmer_fvices, aes(x = log10(nmotifs + 1), y = pchart)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", se = F) +
+  facet_wrap(~ sample) +
+  labs(x = "Number of motifs", y = "f-VICE")
+
+
+ggplot(kmer_fvices, aes(x = log10(nreads + 1), y = pchart)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", se = F) +
+  facet_wrap(~ sample) +
+  labs(x = "Number of ATAC-seq fragments", y = "f-VICE")
+
+ggplot(kmer_fvices, aes(x = log10(nmotifs + 1), y = residual)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", se = F) +
+  facet_wrap(~ sample) +
+  labs(x = "Number of motifs", y = "Normalized f-VICE")
+
+ggplot(kmer_fvices, aes(x = log10(nreads + 1), y = residual)) +
+  geom_point(alpha = .1) +
+  geom_smooth(method = "lm", se = F) +
+  facet_wrap(~ sample) +
+  labs(x = "Number of ATAC-seq fragments", y = "Normalized f-VICE")
+```
+
+# Distribution of 6-mer f-VICEs
+Colored lines correspond to the two 6-mers in detailed in the main figure inset
+```{r, fig.width=5, fig.height=4}
+kmer_fvices %>% 
+  group_by(sample) %>% 
+  mutate(line1 = residual[kmer == "CACTAG"],
+         line2 = residual[kmer == "CACTCG"]) %>% 
+  ungroup() %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  ggplot(aes(residual)) +
+  geom_histogram(bins = 30, color = "black", fill = "lightgray") +
+  geom_vline(aes(xintercept = line1), color = "red") +
+  geom_vline(aes(xintercept = line2), color = "blue") +
+  facet_wrap(~ sample) +
+  labs(x = "6-mer normalized f-VICE", y = "Number of 6-mers") 
+```
+
+```{r, fig.width=3.5, fig.height=2.5}
+kmer_fvices %>% 
+  filter(grepl("abcu", sample)) %>% 
+  mutate(line1 = residual[kmer == "CACTAG"],
+         line2 = residual[kmer == "CACTCG"]) %>% 
+  ggplot(aes(residual)) +
+  geom_histogram(bins = 30, color = "black", fill = "lightgray") +
+  geom_vline(aes(xintercept = line1), color = "red") +
+  geom_vline(aes(xintercept = line2), color = "blue") +
+  scale_y_continuous(breaks = c(0, 100, 200)) +
+  scale_x_continuous(breaks = c(-.4, 0, .4)) +
+  labs(x = "6-mer normalized f-VICE", y = "Number of 6-mers") +
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r, fig.width=6, fig.height=2.5}
+nt_pct <- function(kmer, nt, len = 6){
+  sum(unlist(strsplit(kmer, "")) %in% nt) / len
+}
+
+gc_contents <- kmer_fvices_trimmed %>% 
+  select(kmer, sample, quantile) %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  # Calculate nucleotide frequencies
+  rowwise() %>% 
+  mutate(ntCG = nt_pct(kmer, c("C", "G"))) %>%
+  ungroup() %>% 
+  # Summarize quantiles nucleotide contents
+  group_by(sample, quantile) %>% 
+  summarise(ntCG = mean(ntCG)) %>%
+  gather("nt", "pct", ntCG) %>%
+  mutate(nt = gsub("nt", "", nt)) %>% 
+  mutate(nt = gsub("([ACGT])([ACGT])", "\\1-\\2", nt))
+
+cols <- rev(brewer.pal(5, "RdBu"))
+cols[3] <- "#FFFFFFFF"
+col_lim = max(abs(0.5 - gc_contents$pct))
+
+ggplot(gc_contents, aes(x = factor(quantile), y = sample, fill = pct)) +
+  geom_tile() +
+  scale_fill_distiller(palette = "RdBu", direction = -1, 
+                       limits = c(.5 - col_lim, .5 + col_lim)) +
+  labs(x = "f-VICE quantile", y = "Nucleotide composition",
+       fill = "Mean GC-content")
+```
+
+```{r}
+samples <- c("abcu196_4", "buenrostro_rep1", "lab_gm12878")
+labs <- c("Pancreatic islets", "GM12878\n(Buenrostro)", "GM12878\n(this study)")
+
+colnames <- c("chromosome", "start", "end", "allele_1", "allele_2", "ref", 
+              "total_coverage", "ref_coverage", "fraction_ref", "p", "sig", 
+              "log10p", "SNP_pair", "padj", "ref_allele", "alt_allele", "ref_kmer", 
+              "alt_kmer")
+
+snps <- data.frame()
+for(sample in samples){
+    infile <- sprintf("../data/allelic_imbalance_downsampled_to_20/%s.significant.nominal.kmers.txt",
+                      sample)
+    snps_partial <- read.table(infile, header = F, col.names = colnames, sep = "\t") %>%
+        mutate(sample = sample) %>% 
+        left_join(kmer_fvices_trimmed, by = c("ref_kmer" = "kmer", "sample")) %>% 
+        rename(fvice_ref = pchart, residual_ref = residual, quantile_ref = quantile) %>% 
+        left_join(kmer_fvices_trimmed, by = c("alt_kmer" = "kmer", "sample")) %>% 
+        rename(fvice_alt = pchart, residual_alt = residual, quantile_alt = quantile) %>% 
+        mutate(preferred_allele = case_when(fraction_ref > 0.5 ~ "REF", T ~ "ALT"),
+               fvice_diff = fvice_ref - fvice_alt,
+               residual_diff = residual_ref - residual_alt) %>% 
+        mutate(preferred_allele = factor(preferred_allele, levels = c("REF", "ALT"), ordered = T))
+    snps <- bind_rows(snps, snps_partial) %>% 
+        drop_na()  # remove headers 
+    rm(snps_partial)
+}
+
+```
+
+
+```{r, fig.width=6}
+# q_summary is the quantile summarization which assigns a preferred and non-
+# preferred quantile to the respective allele. Retain all 6-mers per region
+q_summary <- snps %>% 
+  select(sample, chromosome:end, starts_with("quantile"), preferred_allele) %>% 
+  mutate(quantile_preferred = case_when(preferred_allele == "REF" ~ quantile_ref,
+                                        T ~ quantile_alt),
+         quantile_not_preferred = case_when(preferred_allele == "REF" ~ quantile_alt,
+                                        T ~ quantile_ref)) %>% 
+  mutate(quantile_diff = quantile_preferred - quantile_not_preferred)
+
+# q_summary_aggregated summarise each quantile to how many times it was seen as
+# either preferred or non-preferred
+q_summary_aggregated <- q_summary %>% 
+  select(sample, quantile_preferred, quantile_not_preferred) %>% 
+  gather("type", "quantile", -sample) %>% 
+  mutate(type = gsub("^quantile_", "", type)) 
+
+snps_tested <- data.frame()
+for(sample in samples){
+    infile <- sprintf("../data/allelic_imbalance_downsampled_to_20/%s.significant.1.0.kmers.txt", sample)
+    snps_partial <- data.table::fread(infile, header = F, col.names = colnames, sep = "\t",
+                                      data.table = F) %>%
+        mutate(sample = sample) %>% 
+        left_join(kmer_fvices_trimmed, by = c("ref_kmer" = "kmer", "sample")) %>% 
+        rename(fvice_ref = pchart, residual_ref = residual, quantile_ref = quantile) %>% 
+        left_join(kmer_fvices_trimmed, by = c("alt_kmer" = "kmer", "sample")) %>% 
+        rename(fvice_alt = pchart, residual_alt = residual, quantile_alt = quantile) %>% 
+        mutate(preferred_allele = case_when(fraction_ref > 0.5 ~ "REF", T ~ "ALT"),
+               fvice_diff = fvice_ref - fvice_alt,
+               residual_diff = residual_ref - residual_alt) %>% 
+        mutate(preferred_allele = factor(preferred_allele, levels = c("REF", "ALT"), ordered = T))
+    snps_tested <- bind_rows(snps_tested, snps_partial)
+    rm(snps_partial)
+}
+snps_tested <- drop_na(snps_tested)
+
+# Same as q_summary and q_summary_aggregated, but looking at all tested regions
+q_summary_tested <- snps_tested %>% 
+  select(sample, chromosome:end, starts_with("quantile"), preferred_allele) %>% 
+  mutate(quantile_preferred = case_when(preferred_allele == "REF" ~ quantile_ref,
+                                        T ~ quantile_alt),
+         quantile_not_preferred = case_when(preferred_allele == "REF" ~ quantile_alt,
+                                        T ~ quantile_ref)) %>% 
+  mutate(quantile_diff = quantile_preferred - quantile_not_preferred)
+
+q_summary_aggregated_tested <- q_summary_tested %>% 
+  select(sample, quantile_preferred, quantile_not_preferred) %>% 
+  gather("type", "quantile", -sample) %>% 
+  mutate(type = gsub("^quantile_", "", type)) 
+```
+
+```{r, fig.width=9, fig.height=3}
+# Count how many times we see a transition from Qx to Qy in all tested SNPs
+# or in all SNPs with allelic imbalance
+transitions_all <- q_summary_tested %>% 
+  select(sample, quantile_preferred, quantile_not_preferred) %>% 
+  group_by(sample, quantile_preferred, quantile_not_preferred) %>% 
+  summarise(counts = n())
+
+transitions_ai <- q_summary %>% 
+  select(sample, quantile_preferred, quantile_not_preferred) %>% 
+  group_by(sample, quantile_preferred, quantile_not_preferred) %>% 
+  summarise(counts = n()) %>% 
+  ungroup()
+
+transitions <- full_join(transitions_ai, transitions_all, 
+                         by = c("sample", "quantile_preferred", "quantile_not_preferred")) %>% 
+  rename(preferred = quantile_preferred,
+         not_preferred = quantile_not_preferred,
+         counts_ai = counts.x,
+         counts_all = counts.y) %>% 
+  mutate(preferred = factor(preferred),
+         not_preferred = factor(not_preferred)) %>% 
+  group_by(sample) %>% 
+  mutate(fraction_ai = counts_ai / sum(counts_ai, na.rm = T),
+         fraction_all = counts_all / sum(counts_all, na.rm = T),
+         ratio = log2(fraction_ai / fraction_all)) %>% 
+  ungroup() %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T))
+  
+cols <- rev(brewer.pal(11, "RdBu"))
+# cols <- viridis::cividis(11)
+cols[6] <- "#FFFFFF"
+col_lim <- max(abs(transitions$ratio), na.rm = T)
+ggplot(transitions, aes(x = not_preferred, y = preferred, fill = ratio)) +
+  geom_tile() +
+  geom_tile(data = filter(transitions, not_preferred == preferred), color = "black", lwd = .5) +
+  scale_fill_gradientn(colors = cols, lim = c(-col_lim, col_lim), breaks = c(-1.5, 0, 1.5)) +
+  facet_wrap(~ sample) +
+  labs(x = "Non-preferred allele\nf-VICE decile", y = "Preferred allele\nf-VICE decile",
+       fill = "Transition log2 ratio\n(Imbalanced / all SNPs)")
+
+rm(transitions_all, transitions_ai)
+```
+
+```{r, fig.width=5, fig.height=3}
+d_plot <- transitions %>% 
+  filter(grepl("abcu", sample))
+col_lim <- max(abs(d_plot$ratio), na.rm = T)
+
+ggplot(d_plot, aes(x = not_preferred, y = preferred, fill = ratio)) +
+  geom_tile() +
+  geom_tile(data = filter(transitions, not_preferred == preferred, grepl("abcu", sample)), 
+            color = "black", lwd = .5) +
+  scale_fill_gradientn(colors = cols, lim = c(-col_lim, col_lim), breaks = c(-.4, 0, .4)) +
+  labs(x = "Non-preferred allele\nf-VICE decile", y = "Preferred allele\nf-VICE decile",
+       fill = "Transition log2 ratio\n(Imbalanced / all SNPs)")
+
+```
+
+```{r, fig.width=3}
+# rs563831485
+# This is the locus with the highest f-VICE difference between alleles
+single_locus <- snps %>% 
+  filter(start == 7452545) 
+
+single_locus %>% 
+  select(residual_ref, residual_alt) %>% 
+  gather("allele", "residual") %>% 
+  ggplot(aes(x = allele, y = residual)) +
+  stat_summary(fun.y = median, fun.ymin = median, fun.ymax = median,
+                 geom = "crossbar", width = 0.5, color = "black") +
+  geom_jitter(height = 0, width = .2, size = 4) +
+  labs(x = "Allele", y = "6-mer normalized f-VICE") +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())
+```
+
+```{r, fig.width=5, fig.height=5}
+single_locus %>% 
+  select(residual_ref, residual_alt, ends_with("kmer")) %>% 
+  rename(kmer_ref = ref_kmer,
+         kmer_alt = alt_kmer) %>% 
+  mutate(index = 1:n()) %>% 
+  gather("key", "value", -index) %>% 
+  separate(key, c("metric", "allele"), "_") %>% 
+  spread(metric, value) %>% 
+  mutate(residual = as.numeric(residual)) %>% 
+  ggplot(aes(x = allele, y = residual, label = kmer, color = factor(index))) +
+  geom_point(size = 0.5) +
+  ggrepel::geom_label_repel(size = 3) +
+  scale_color_viridis_d()
+```
+
+```{r, fig.height=3}
+counts <- q_summary_aggregated %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  group_by(sample, quantile) %>% 
+  summarise(n = n(),
+            n_preferred = sum(type == "preferred")) %>% 
+  mutate(quantile = factor(quantile)) %>% 
+  mutate(fraction_preferred = n_preferred / n)
+
+ggplot(counts, aes(x = quantile, y = fraction_preferred)) +
+  # geom_col() +
+  geom_line(aes(group = sample)) +
+  geom_point() +
+  geom_hline(yintercept = .5, lty = 2, col = "red") +
+  facet_wrap(~ sample) +
+  coord_cartesian(ylim = c(.35, .65)) +
+  labs(x = "f-VICE quantile", 
+       y = "Fraction of time quantile is preferred\n(#preferred / #occurrences)")
+
+counts_tested <- q_summary_aggregated_tested %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  group_by(sample, quantile) %>% 
+  summarise(n = n(),
+            n_preferred = sum(type == "preferred")) %>% 
+  mutate(quantile = factor(quantile)) %>% 
+  mutate(fraction_preferred = n_preferred / n)
+
+ggplot(counts_tested, aes(x = quantile, y = fraction_preferred)) +
+  # geom_col() +
+  geom_line(aes(group = sample)) +
+  geom_point() +
+  geom_hline(yintercept = .5, lty = 2, col = "red") +
+  facet_wrap(~ sample) +
+  coord_cartesian(ylim = c(.35, .65)) +
+  labs(x = "f-VICE quantile", 
+       y = "Fraction of time quantile is preferred\n(#preferred / #occurrences)")
+```
+
+```{r, fig.width=6}
+snps_summary <- snps %>% 
+    group_by(chromosome, start, end, sample) %>% 
+    summarise(preferred_allele = unique(preferred_allele),
+           fvice_diff = median(fvice_diff, na.rm = T),
+           residual_diff = median(residual_diff, na.rm = T))
+
+norm_01 <- function(x, min, max) {
+  (x - min) / (max - min)
+}
+
+snps_summary2 <- snps %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  mutate(ref_coverage = as.numeric(ref_coverage)) %>% 
+  select(chromosome:end, sample, preferred_allele, 
+         ref_coverage, residual_ref, residual_alt) %>% 
+  mutate(residual_preferred = case_when(preferred_allele == "REF" ~ residual_ref,
+                                      T ~ residual_alt),
+         residual_not_preferred = case_when(preferred_allele == "ALT" ~ residual_ref,
+                                      T ~ residual_alt),
+         effect_size = case_when(preferred_allele == "ALT" ~ 20L - ref_coverage,
+                                 T ~ ref_coverage)) %>% 
+  # Add 0-1 normalized
+  group_by(sample) %>% 
+  mutate(min = min(c(residual_preferred, residual_not_preferred)),
+         max = max(c(residual_preferred, residual_not_preferred))) %>% 
+  mutate(preferred01 = norm_01(residual_preferred, min, max),
+         not_preferred01 = norm_01(residual_not_preferred, min, max)) %>% 
+  ungroup() %>% 
+  # Summarise
+  mutate(residual_diff = residual_preferred - residual_not_preferred,
+         norm_ratio = log2(preferred01 / not_preferred01)) %>% 
+  select(-residual_ref, -residual_alt) %>% 
+  group_by(chromosome, start, end, sample) %>% 
+  summarise(effect_size = unique(effect_size),
+            residual_preferred = median(residual_preferred),
+            residual_not_preferred = median(residual_not_preferred),
+            residual_diff = median(residual_diff, na.rm = T),
+            norm_ratio = median(norm_ratio, na.rm = T),
+            n = n()) %>% 
+  ungroup()
+
+snps_summary2 %>% 
+  split(.$sample) %>% 
+  lapply(function(x) {
+    wilcox.test(x$residual_preferred, x$residual_not_preferred)
+  })
+
+snps_summary2 %>% 
+  select(sample, ends_with("preferred")) %>% 
+  gather("preferred", "residual", - sample) %>% 
+  mutate(preferred = gsub("residual_", "", preferred)) %>% 
+  mutate(preferred = factor(preferred, levels = c("preferred", "not_preferred"), 
+                            ordered = T, labels = c("Preferred", "Not preferred"))) %>% 
+  ggplot(aes(x = preferred, y = residual, group = preferred)) +
+  geom_flat_violin(
+    position = position_nudge(x = 0, y = 0), adjust = 0.95, 
+    trim = FALSE, alpha = .5
+  ) +
+  geom_point(aes(x = as.numeric(preferred) - 0.25, y = residual), 
+    position = position_jitter(width = .10, height = 0),
+    size = .25, alpha = .10) +
+  geom_boxplot(
+    aes(x = as.numeric(preferred) + 0, y = residual), 
+    outlier.shape = NA, width = .25,color = "black"
+  ) +
+  scale_fill_viridis_d(option = "D") +
+  facet_wrap(~ sample) +
+  labs(x = "ATAC-seq allelic imbalance allele", y = "Median bound 6-mers f-VICE") +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.x = element_blank())
+```
+
+```{r, fig.width=6, fig.height=4}
+ggplot(snps_summary2, aes(x = sample, y = residual_diff, group = sample)) +
+  geom_flat_violin(
+    position = position_nudge(x = 0, y = 0), adjust = 0.95, 
+    trim = FALSE, alpha = .5
+  ) +
+  geom_point(aes(x = as.numeric(factor(sample)) - 0.25, y = residual_diff), 
+    position = position_jitter(width = .10, height = 0),
+    size = .25, alpha = .1) +
+  geom_boxplot(
+    aes(x = as.numeric(factor(sample)) + 0, y = residual_diff), 
+    outlier.shape = NA, width = .25,color = "black"
+  ) +
+  geom_hline(yintercept = 0, lty = 2, color = "red") +
+  coord_flip() +
+  labs(x = "ATAC-seq sample", 
+       y = "6-mer f-VICE difference\n(preferred vs non-preferred allele)") +
+  theme(panel.grid.minor = element_blank(),
+        panel.grid.major.y = element_blank())
+
+table(snps_summary2$sample, snps_summary2$residual_diff > 0) %>% 
+  as.data.frame() %>% 
+  mutate(Var2 = as.character(Var2)) %>% 
+  mutate(Var2 = case_when(Var2 == "TRUE" ~ "greater", T ~ "lower")) %>% 
+  spread(Var2, Freq) %>% 
+  split(.$Var1) %>% 
+  lapply(function(x) binom.test(x$greater, x$greater + x$lower))
+```

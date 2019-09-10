@@ -1,0 +1,212 @@
+---
+title: "Figure 2A"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(MASS)
+library(DT)
+
+library(knitr)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+read_fun_frap <- function(sample){
+  infile <- sprintf("../data/processed/fvices/%s.fvice.out", sample)
+  infile <- read.table(infile, header = T) 
+  
+  d <- infile %>% 
+    mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual,
+           sample = sample) %>% 
+    mutate(nreads = log10(nreads)) %>% 
+    mutate(residual = residual / residual[motif %in% ctcf_reference])
+  
+  return(d)
+}
+```
+
+
+```{r, fig.height=10, fig.width=5}
+samples <- c("cd4_87", "cd4_88", "buenrostro_rep1", "lab_gm12878", "beta3", 
+             "abcu196_4", "alpha3", "hepg2_3", "hepg2_1")
+labs <- c("CD4+ T cells 1", "CD4+ T cells 2", "GM12878 (Buenrostro et al)",
+          "GM12878 (this study)", "Pancreatic beta cells", "Pancreatic islets", 
+          "Pancreatic alpha cells", "HepG2 1", "HepG2 2")
+
+ctcf_reference <- "CTCF_known2"
+
+fraps <- read.table("../data/motif_frapRec.dat", header = T) %>% 
+  rename(factor = tf) %>% 
+  filter(factor != "ESR2")  # Not expressed in any of these samples
+
+all_frap <- bind_rows(lapply(samples, read_fun_frap))
+d_frap <- all_frap %>% 
+  inner_join(fraps, by = "motif") %>% 
+  filter(!(factor %in% c("FOXA1") & sample %in% c("buenrostro_rep1", "lab_gm12878", 
+                                                 "cd4_87", "cd4_88"))) %>% 
+  filter(!(factor %in% c("NR3C2") & sample %in% c("buenrostro_rep1", "lab_gm12878", 
+                                                  "cd4_87", "cd4_88"))) %>% 
+  group_by(factor, sample)
+
+d_frap_long <- d_frap %>% 
+  gather("fvice_type", 'value', pchart, residual) %>% 
+  mutate(fvice_type = gsub("pchart", "f-VICE", fvice_type),
+         fvice_type = gsub("residual", " f-VICE residual", fvice_type)) %>% 
+  ungroup()
+```
+
+
+```{r, fig.width=4.5, fig.height=3}
+d_plot <- d_frap %>% 
+  filter(sample %in% "lab_gm12878")
+
+p <- ggplot(d_plot, aes(x = frap_time, y = residual, label = factor)) +
+  geom_smooth(method = 'lm', se = F, na.rm = T, color = "black", lty = 3) +
+  geom_point(aes(fill = factor, shape = factor), size = 5, na.rm = T, alpha = .5) +
+  scale_shape_manual(values = c(rep(22,8), rep(21,8))) +
+  scale_fill_manual(values = c(brewer.pal(8, "Paired"),
+                                brewer.pal(8, "Paired"))) +
+  scale_x_continuous(trans = 'log10', labels = comma, 
+                     breaks = c(10,100,1000), limits = c(10,1000)) +
+  scale_y_continuous(breaks = seq(-.5,1.5,0.5)) +
+  guides(fill = guide_legend(override.aes = list(alpha = 1))) +
+  labs(x = "FRAP recovery time (seconds)", y = "Normalized f-VICE",
+       fill = 'Motif', shape = "Motif") +
+  theme(panel.grid.minor = element_blank())
+plot(p)
+```
+
+```{r, fig.width=11, fig.height=7}
+p <- d_frap_long %>% 
+  filter(fvice_type %in% " f-VICE residual") %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  ggplot(aes(x = frap_time, y = value, label = factor)) +
+  geom_smooth(method = 'lm', se = F, na.rm = T) +
+  geom_point(aes(shape = factor), size = 5, na.rm = T) +
+  geom_point(aes(color = factor, shape = factor), size = 4.2, na.rm = T) +
+  facet_wrap(~ sample, ncol = 4, scales = 'free') +
+  scale_shape_manual(values = c(rep(15,8), rep(16,8))) +
+  scale_color_manual(values = c(brewer.pal(8, "Paired"),
+                                brewer.pal(8, "Paired"))) +
+  scale_x_continuous(trans = 'log10', labels = comma, 
+                     breaks = c(10,100,1000), limits = c(10,1000)) +
+  scale_y_continuous(breaks = seq(-.5,1.5,0.5)) +
+  labs(x = "FRAP recovery time (seconds)", y = "Normalized f-VICE",
+       color = 'TF', shape = "TF") 
+plot(p)
+```
+
+```{r, fig.width=11, fig.height=7}
+p <- d_frap_long %>% filter(fvice_type %in% " f-VICE residual") %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  group_by(sample) %>% 
+  mutate(frap_time = rank(frap_time), value = rank(value)) %>% 
+  ggplot(aes(x = frap_time, y = value)) +
+  geom_smooth(method = 'lm', se = F, na.rm = T) +
+  geom_point(aes(shape = factor), size = 5, na.rm = T) +
+  geom_point(aes(color = factor, shape = factor), size = 4.2, na.rm = T) +
+  facet_wrap(~ sample, ncol = 4, scales = 'free') +
+  scale_shape_manual(values = c(rep(15,8), rep(16,8))) +
+  scale_color_manual(values = c(brewer.pal(8, "Paired"),
+                                brewer.pal(8, "Paired"))) +
+  scale_x_continuous(breaks = c(2,11), labels = c("Low", "High")) +
+  scale_y_continuous(breaks = c(2,11), labels = c("Low", "High")) +
+  labs(x = "FRAP recovery time", y = "f-VICE",
+       color = 'Motif', shape = "Motif")  +
+  theme(panel.grid = element_blank())
+plot(p)
+```
+
+
+
+```{r, fig.width=7, fig.height=4}
+c1 <- d_frap %>% 
+  group_by(sample) %>% 
+  summarise(residual_corr = cor.test(residual, log10(frap_time), method = 's', exact = F)$estimate,
+            residual_p = cor.test(residual, log10(frap_time), method = 's', exact = F)$p.value,
+            fvice_corr = cor.test(pchart, log10(frap_time), method = 's', exact = F)$estimate,
+            fvice_p = cor.test(pchart, log10(frap_time), method = 's', exact = F)$p.value,
+            method = "spearman") %>% 
+  mutate(adj_p = p.adjust(residual_p, method = "holm")) %>% 
+  mutate(adj_p_fvice = p.adjust(fvice_p, method = "holm"))
+
+c2 <- d_frap %>% 
+  group_by(sample) %>% 
+  summarise(residual_corr = cor.test(residual, log10(frap_time), method = 'p', exact = F)$estimate,
+            residual_p = cor.test(residual, log10(frap_time), method = 'p', exact = F)$p.value,
+            fvice_corr = cor.test(pchart, log10(frap_time), method = 'p', exact = F)$estimate,
+            fvice_p = cor.test(pchart, log10(frap_time), method = 'p', exact = F)$p.value,
+            method = "pearson") %>% 
+  mutate(adj_p = p.adjust(residual_p, method = "bonferroni")) %>% 
+  mutate(adj_p_fvice = p.adjust(fvice_p, method = "bonferroni"))
+
+# Robust regression
+c3 <- d_frap %>% 
+  group_by(sample) %>% 
+  summarise(residual_beta = unname(rlm(log10(frap_time) ~ residual)$coefficients[2]),
+            residual_t  = summary(rlm(log10(frap_time) ~ residual))$coefficients[2,3],
+            residual_df = summary(rlm(log10(frap_time) ~ residual))$df[2],
+            method_rr = "rr") %>% 
+  # Calculate p-values (pt * 2 for two-tailed test - same as lm)
+  mutate(residual_p_rr = pt(residual_t, df = residual_df, lower.tail = F) * 2) %>% 
+  mutate(adj_p_rr = p.adjust(residual_p_rr, method = "holm"))
+
+corrs <- bind_rows(c1,c2) %>% 
+  left_join(c3, by = "sample")
+
+p <- corrs %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  ggplot(aes(x = sample, y = residual_corr, fill = adj_p <= 0.05)) +
+  geom_col() +
+  facet_wrap(~ method) +
+  labs(x = "ATAC-seq sample", y = "f-VICE / FRAP correlation") +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+plot(p)
+```
+
+```{r, fig.width=4, fig.height=4, dev="cairo_pdf"}
+col_scale <- c("gray20", "white", brewer.pal(n = 8, name = "Reds")[3:8])
+p <- corrs %>% 
+  filter(method == "spearman") %>% 
+  mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
+  mutate(sample = factor(sample, levels = sample[order(-residual_beta)], ordered = T)) %>% 
+  ggplot(aes(x = sample, y = residual_beta, fill = -log10(adj_p_rr))) +
+  geom_col(color = "black") +
+  scale_fill_gradientn(
+    colors = col_scale,
+    limits = c(0, -log10(min(corrs$adj_p_rr))),
+    breaks = c(0, round(-log10(0.05), 2), 3, 5, 7)
+  ) +
+  labs(
+    x = "Sample", 
+    y = "FRAP - f-VICE\nrobust regression β",
+    fill = "Adjusted\np-value (-log10)"
+  ) +
+  theme(
+    axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor.y = element_blank()
+  )
+
+plot(p)
+```

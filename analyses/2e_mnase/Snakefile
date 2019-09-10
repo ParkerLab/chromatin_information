@@ -23,8 +23,8 @@ BMO = config["bmo_dir"]
 MD_DIR = join(outdir, "mark_duplicates")
 PRUNE_DIR = join(outdir, "prune")
 BAM_DIR = join(outdir, "prune")
-BED_DIR = join(outdir, "bedfiles_motifs_250bp", "{sample}")
-NGS_DIR = join(outdir, "ngsplot_per_motif_250bp", "{sample}")
+BED_DIR = join(outdir, "bedfiles", "{sample}")
+NGS_DIR = join(outdir, "ngsplot", "{sample}")
 
 
 # Main calls

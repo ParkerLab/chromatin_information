@@ -1,0 +1,158 @@
+---
+title: "Figure 1f - f-VICE distributions"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(mixtools)
+
+library(knitr)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+read_fun <- function(sample, cutoff_thresh = .10){
+    infile <- sprintf("../data/processed/fvices/%s.fvice.out",sample)
+    d <- read.table(infile, header = T) 
+
+    # Remove motifs with less than x percentile predicted bound motif instances
+    cutoff <- unname(quantile(d$nmotifs, cutoff_thresh))
+    
+    d <- d %>% 
+        mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual,
+               sample = sample) %>% 
+        mutate(nreads = log10(nreads)) %>% 
+        filter(motif %in% motifs_to_use) %>% 
+        mutate(keep = nmotifs > cutoff)
+    
+    print(sprintf("%s: %s motifs removed (%s percentile, %s predicted bound instances)", 
+                  sample, sum(!d$keep), cutoff_thresh, cutoff))
+    d <- d %>% 
+        filter(keep) %>% select(-keep) %>% 
+        mutate(residual = residual / residual[motif %in% ctcf_reference])
+    return(d)
+}
+
+# Given a normalmixEM object from mixtools, extract the data used for plotting
+# Returns: data frame with f-VICE and density lines
+get_mixdist_df_1 <- function(mix.object){
+  k <- ncol(mix.object$posterior)
+  x <- sort(mix.object$x)
+  arbmean <- TRUE
+  arbvar <- TRUE
+  df <- lapply(
+    1:k, 
+    function(i) {
+      data.frame(
+        fvice = x,
+        density = mix.object$lambda[i] * dnorm(
+          x, 
+          mean = mix.object$mu[i * arbmean + (1 - arbmean)], 
+          sd = mix.object$sigma[i * arbvar + (1 - arbvar)]
+        ),
+        k = i
+      )
+    }
+  )
+  bind_rows(df)
+}
+```
+
+```{r}
+samples <- c("cd4_87", "cd4_88", "buenrostro_rep1", "lab_gm12878", "beta3", 
+             "abcu196_4", "alpha3", "hepg2_3", "hepg2_1")
+labs <- c("CD4+ T cells 1", "CD4+ T cells 2", "GM12878 (Buenrostro et al)",
+          "GM12878 (this study)", "Pancreatic beta cells", "Pancreatic islets", 
+          "Pancreatic alpha cells", "HepG2 1", "HepG2 2")
+
+ctcf_reference <- "CTCF_known2"
+motifs_to_use <- read.table("../data/motif_list.trimmed.txt")[,1]
+
+pwm_info <- read.table("../data/motifInformationTotalBits.dat", 
+                       col.names = c("motif", "file", "info_pwm")) %>% 
+    select(-file)
+
+all <- bind_rows(lapply(samples, read_fun)) %>% 
+    left_join(pwm_info, by = "motif") %>%
+    filter(motif %in% motifs_to_use) %>% 
+    mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T))
+
+all_wide <- all %>% 
+    select(motif, pchart, residual, sample, nreads) %>% 
+    mutate(nreads = log10(nreads)) %>% 
+    gather("metric", "value", pchart, residual, nreads) %>% 
+    spread(sample, value)
+```
+
+
+```{r, fig.height=4.5, fig.width=6}
+plot_mix_comps <- function(x, mu, sigma, lam) {
+    lam * dnorm(x, mu, sigma)
+}
+
+# Use Gaussian mixture models
+mixmdl <- all %>%
+    select(sample, residual) %>% 
+    drop_na() %>% 
+    split(.$sample) %>% 
+    lapply(function(x)
+    {
+        set.seed(seed)
+        normalmixEM(x$residual, k = 2, maxit = 10000)
+    })
+
+all_posteriors  <- data.frame()
+for(i in names(mixmdl)){
+
+    d <- all %>% filter(sample %in% i)
+    mix_fit <- mixmdl[[i]]
+    summary(mix_fit)
+    
+    d_mixplot1 <- get_mixdist_df_1(mix_fit)
+    
+    d_mix <- data.frame(
+      motif = d$motif,
+      sample = d$sample,
+      residual = mixmdl[[i]]$x,
+      posterior = mixmdl[[i]]$posterior[,"comp.1"]
+    )
+    all_posteriors <- bind_rows(d_mix, all_posteriors)
+    
+    bin_n = 15
+    
+    p <- d_mixplot1 %>%
+      mutate(k = factor(k)) %>%
+      ggplot(aes(x = fvice, y = density)) +
+      geom_histogram(aes(fvice, ..density..),
+                     color = "black", fill = "white", bins = bin_n) +
+      geom_line(aes(color = k, group = k), lwd = 1.2) +
+      geom_density(aes(fvice, ..density..), 
+                   colour = "black", lwd = 1, linetype = 'dashed') +
+      scale_color_manual(values = c("#27647B", "#CA3542")) +
+      labs(x = "Normalized f-VICE", y = "Density", title = i) +
+      guides(color = F) +
+      theme_bw(base_size = 15) +
+      theme(panel.grid.minor = element_blank())
+    plot(p)
+}
+rm(i, d, d_mix, p)
+```

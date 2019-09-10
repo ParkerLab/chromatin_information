@@ -1,0 +1,208 @@
+---
+title: "Figure 3a"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(DT)
+
+library(knitr)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+## Aux functions
+z_trans <- function(x){
+  (x - mean(x)) / sd(x)
+}
+
+read_fun <- function(sample) {
+  infile <- sprintf("../data/processed/fvices/%s.fvice.out",sample)
+  infile <- read.table(infile, header = T) 
+  
+  d <- infile %>% 
+    mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual,
+           residual_nreads = lm(log10(nreads) ~ log10(nmotifs))$residual,
+           nreads_by_motifs = log10(nreads/ nmotifs),
+           sample = sample) %>% 
+    mutate(nreads = log10(nreads)) %>% 
+    mutate(residual = residual / residual[motif %in% ctcf_reference])
+  
+  return(d)
+}
+
+
+summary_plot <- function(all, all_wide, scale_type = "free", 
+                         metric_name = "Normalized f-VICE"){
+  p <- ggplot(all, aes(x = nmotifs, y = metric)) +
+    geom_point(alpha = .1) +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ sample, scales = scale_type) +
+    scale_x_continuous(trans = "log10") +
+    labs(x = "Number of motifs", y = metric_name)
+  plot(p)
+  
+  p <- ggplot(all, aes(x = nreads, y = metric)) +
+    geom_point(alpha = .1) +
+    geom_smooth(method = "lm") +
+    facet_wrap(~ sample, scales = scale_type) +
+    scale_x_continuous(trans = "log10") +
+    labs(x = "Number of ATAC-seq fragments", y = metric_name)
+  plot(p)
+}
+
+
+all_wide_2_dm <- function(all_wide, col_normalize = T){
+  dm <- all_wide %>%
+    drop_na() %>% 
+    select(-metric) %>% 
+    tibble::remove_rownames() %>% 
+    tibble::column_to_rownames("motif") %>% 
+    data.matrix()
+  if(col_normalize){
+    dm <- apply(dm, 2, z_trans)
+  }
+  return(dm)
+}
+
+
+all_wide_2_hm <- function(all_wide, col_normalize = T){
+  all_hm <- all_wide %>% 
+    select(-metric) %>% 
+    drop_na() %>% 
+    gather("sample", "value", -motif)
+  
+  # normalize
+  if(col_normalize){
+    all_hm <- all_hm %>% 
+      group_by(sample) %>% 
+      mutate(value = z_trans(value))
+  }
+  all_hm <- ungroup(all_hm)
+  return(all_hm)
+}
+
+
+correlation_clust_plot <- function(dm){
+  clust <- hclust(dist(cor(dm, method = 's')))  # Spearman correlation
+  plot(clust, xlab = "ATAC-seq sample", 
+       ylab = "Euclidean distance (of Spearman correlation)",
+       sub = NA)
+  
+  # plot correlation matrix
+  pw_cor <- cor(dm, method = 's') %>% 
+    as.data.frame() %>% 
+    tibble::rownames_to_column(var = "sample") %>% 
+    gather("sample2","cor", -sample) %>% 
+    mutate(sample = factor(sample, levels = clust$labels[clust$order], ordered = T),
+           sample2 = factor(sample2, levels = clust$labels[clust$order], ordered = T))
+  
+  p <- ggplot(pw_cor, aes(x = sample, y = sample2, fill =cor)) + 
+    geom_tile() +
+    scale_fill_distiller(palette = "RdGy", direction = -1, breaks = c(-1,0,1), limits = c(-1, 1)) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
+  plot(p)
+}
+
+
+motif_clustering <- function(dm, all_hm){
+  # Get label orders based on clustering data matrix
+  row_clust <- hclust(dist(cor(t(dm), method = 's')))
+  plot(row_clust, hang = -1, cex = 0.25, 
+       xlab = "Motif", y = "Euclidean distance (of Spearman correlation)",
+       sub = NA)
+  
+  col_clust <- hclust(dist(cor(dm, method = 's')))
+  motif_ordered <- row_clust$labels[row_clust$order]
+  sample_ordered <- data.frame(sample = col_clust$labels[col_clust$order]) %>% 
+    pull(sample)
+  
+  # Make heatmap table
+  hm <- all_hm %>% 
+    mutate(motif = factor(motif, levels = motif_ordered, ordered = T),
+           sample = factor(sample, levels = sample_ordered, ordered = T)) %>% 
+    # row-normalize
+    group_by(motif) %>% 
+    mutate(value = z_trans(value)) %>% 
+    ungroup()
+  
+  # Plot
+  pal <- viridis::cividis(11)
+  pal[6] <- "#FFFFFF"
+  color_limit = max(abs(hm$value)) 
+  p <- ggplot(hm, aes(x = sample, y = motif, fill = value)) +
+    geom_tile() +
+    # scale_fill_viridis_c(option = "E") +
+    scale_fill_gradientn(colors = pal, limits = c(-color_limit, color_limit)) +
+    labs(x = "ATAC-seq sample", y = "Motifs", 
+         fill = "Motif Z-score") +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+          axis.text.y = element_blank(),
+          axis.ticks.y = element_blank(),
+          plot.margin = margin(20, 20, 20, 30, unit = "pt"))
+  return(p)
+}
+```
+
+```{r}
+samples <- c("cd4_87", "cd4_88", "buenrostro_rep1", "lab_gm12878", "beta3", 
+             "abcu196_4", "alpha3", "hepg2_3", "hepg2_1")
+labs <- c("CD4+ T cells 1", "CD4+ T cells 2", "GM12878 (Buenrostro et al)",
+          "GM12878 (this study)", "Pancreatic beta cells", "Pancreatic islets", 
+          "Pancreatic alpha cells", "HepG2 1", "HepG2 2")
+
+ctcf_reference <- "CTCF_known2"
+motifs_to_use <- read.table("../data/motif_list.trimmed.txt")[,1]
+
+pwm_info <- read.table("../data/motifInformationTotalBits.dat", 
+                       col.names = c("motif", "file", "info_pwm")) %>% 
+    select(-file)
+
+
+all <- bind_rows(lapply(samples, read_fun)) %>% 
+    filter(motif %in% motifs_to_use) %>% 
+    mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T))
+
+all_wide <- all %>% 
+    select(motif, pchart, residual, sample, nreads) %>% 
+    mutate(nreads = log10(nreads)) %>% 
+    gather("metric", "value", pchart, residual, nreads) %>% 
+    spread(sample, value)
+```
+
+```{r, fig.width=6, fig.height=5}
+all2 <- mutate(all, metric = residual)
+all_wide2 <- filter(all_wide, metric == "residual")
+dm_residuals <- all_wide_2_dm(all_wide2)
+all_hm_residuals <- all_wide_2_hm(all_wide2)
+summary_plot(all2, all_wide2)
+correlation_clust_plot(dm_residuals)
+```
+
+```{r, fig.width=12, fig.height=5}
+clust <- motif_clustering(dm_residuals, all_hm_residuals)
+```
+
+```{r, fig.width=4, fig.height=5}
+plot(clust)
+```
+

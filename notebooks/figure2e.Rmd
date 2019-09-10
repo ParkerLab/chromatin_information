@@ -1,0 +1,477 @@
+---
+title: "Figure 2E"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(parallel)
+
+library(knitr)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+source("../bin/R_rainclouds.R")
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+z_trans <- function(x){
+  (x - mean(x, na.rm = T)) / sd(x, na.rm = T)
+}
+
+robust_iqr <- function(x){
+  (x - median(x, na.rm = T)) / IQR(x, na.rm = T)
+}
+
+
+process_rdata <- function(motif, sample, exp) {
+  infile <- sprintf("../data/processed/mnase/%s/%s__%s.avgprof.RData", 
+                    sample, exp, motif)
+  if(file.exists(infile)){
+    load(infile)
+    
+    # Create signal dataframe
+    mnase <- data.frame(position = seq(-500,500, 10), # ngsplot gives 100 points on x-axis
+                        signal = regcovMat[,1],
+                        conf = confiMat[,1],
+                        motif)
+    
+    # Add normalization
+    mnase <- mnase %>%
+      mutate(normalized = z_trans(signal),
+             normalized_iqr = robust_iqr(signal),
+             upper = signal + conf,
+             lower = signal - conf)
+    return(mnase)
+  }
+}
+
+read_information <- function(infile){
+  f <- read.table(infile, header = T, sep = "\t") %>% 
+    select(motif, position, all_normalized)
+  return(f)
+}
+
+# Get sample data
+get_posinfo <- function(sample){
+  indir <- sprintf("../data/processed/chromatin_information/%s",sample)
+  infiles <- list.files(indir, ".posinfo.gz", full.names = T)
+  posinfo <- lapply(infiles, read_information) %>% 
+    bind_rows() %>% 
+    mutate(motif = gsub(sprintf("^%s_",sample), "", motif)) %>% 
+    filter(motif %in% motifs_to_use)
+  return(posinfo)
+}
+
+# Normalize signal tracks
+get_posinfo_normalized <- function(posinfo){
+  posinfo_normalized <- posinfo %>% 
+    group_by(motif) %>% 
+    mutate(all_normalized = z_trans(all_normalized))    
+  return(posinfo_normalized)
+}
+
+# Plot both tracks
+plot_tracks <- function(posinfo, posinfo_normalized){
+  p <- ggplot(posinfo, aes(x = position, y = all_normalized, group = motif)) +
+    geom_line(alpha = .01)
+  plot(p)
+}
+
+
+get_posinfo_clus <- function(posinfo, posinfo_normalized){
+  motifs_to_flip <- posinfo %>% 
+    filter(position != 0, all_normalized > 0) %>% 
+    mutate(side = case_when(position < 0 ~ "left", T ~ "right")) %>% 
+    group_by(motif, side) %>% 
+    summarise(sum = sum(all_normalized)) %>% 
+    spread(side, sum) %>% 
+    group_by(motif) %>% 
+    summarise(left = sum(left, na.rm = T),
+              right = sum(right, na.rm = T)) %>% 
+    filter(left < right) %>% 
+    pull(motif)
+  
+  # Shift asymmetric posinfos to the same orientation
+  posinfo_clus <- posinfo_normalized %>% 
+    group_by(motif) %>% 
+    mutate(all_normalized = case_when(motif %in% motifs_to_flip ~ rev(all_normalized),
+                                      T ~ all_normalized)) %>% 
+    select(motif, all_normalized, position)
+}
+
+# Run k-means
+run_kmeans <- function(posinfo_clus, kmax = 5, ncores = 1){
+  # Make clustering data matrix using subset of data
+  # (removes non-informative outer regions)
+  clus_dm <- as.data.frame(posinfo_clus) %>% 
+    filter(abs(position) < 250) %>% 
+    spread(position, all_normalized) %>%
+    tibble::column_to_rownames("motif") %>% 
+    data.matrix()
+  
+  # Run clustering and save dats
+  set.seed(seed)
+  klusters <- mclapply(1:kmax, function(i)
+  {
+    set.seed(seed)
+    kmeans(clus_dm, i, nstart = 1000)
+  }, mc.cores = ncores)
+  
+  # Get the sum of SS per cluster for the entire model (elbows)
+  klus_variance <- data.frame(n_clusters = 1:kmax, withinSS_total = NA)
+  for(i in 1:kmax){
+    klus_variance$withinSS_total[i] <- klusters[[i]]$tot.withinss
+  }
+  rm(i)
+  p_elbow <- ggplot(klus_variance, aes(x = n_clusters, y = withinSS_total)) + 
+    geom_line() + geom_point() + 
+    scale_x_continuous(breaks = 1:kmax) + 
+    theme_bw()
+  plot(p_elbow) 
+  
+  return(klusters)
+}
+
+# Plot all clusters
+plot_all_clusters <- function(klusters, posinfo_clus, k){
+  d_k <- data.frame(motif   = names(klusters[[k]]$cluster),
+                    cluster = unname(klusters[[k]]$cluster)) 
+  
+  d_plot <- posinfo_clus %>% 
+    left_join(d_k, by = "motif") 
+  
+  col_lim <- max(abs(d_plot$all_normalized), na.rm = T)
+  cols <- rev(brewer.pal(9, 'RdBu'))
+  p <- ggplot(d_plot, aes(x = position, y = motif, fill = all_normalized)) +
+    geom_tile(color = NA) + 
+    scale_fill_gradient2(low = cols[1], high = cols[8], mid = cols[5], midpoint = 0) +
+    facet_wrap(~ cluster, scales = 'free', nrow = 1) + 
+    labs(x = "Position (relative to motif center)", y = "Motif", fill = "Z-score", title = sample) +
+    theme(axis.text.y = element_text(size = 2))
+  return(d_plot)
+}
+```
+
+## Chromatin information
+```{r}
+sample_to_use <- "lab_gm12878"
+motifs_to_use <- read.table("../data/motif_list.trimmed.txt")[,1]
+
+high_fvice <- read.table("../data/processed/fvices/high_fvice_motifs_per_sample.txt", 
+                         header = T) %>%
+  filter(sample == sample_to_use) %>%
+  select(-sample) %>%
+  mutate(fvice = "high")
+
+low_fvice <- read.table("../data/processed/fvices/low_fvice_motifs_per_sample.txt",
+                        header = T) %>%
+  filter(sample == sample_to_use) %>%
+  select(-sample) %>%
+  mutate(fvice = "low")
+
+fvice_groups <- bind_rows(high_fvice, low_fvice)
+rm(high_fvice, low_fvice)
+
+fvices <- read.table(sprintf("../data/processed/fvices/%s.fvice.out", sample_to_use), 
+                     header = T) %>%
+  filter(motif %in% motifs_to_use) %>%
+  mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual)
+
+posinfo <- get_posinfo(sample_to_use)
+posinfo_normalized <- get_posinfo_normalized(posinfo)
+```
+
+```{r, fig.width=3, fig.height=3}
+posinfo_clus <- get_posinfo_clus(posinfo, posinfo_normalized)
+klusters <- run_kmeans(posinfo_clus, kmax = 5, ncores = 4)
+info <- plot_all_clusters(klusters, posinfo_clus, k = 3) %>% 
+  mutate(cluster = factor(cluster, levels = c(3,2,1), labels = 1:3, ordered = T)) %>% 
+  left_join(fvices, by = "motif")
+```
+
+```{r}
+exp <- "SRR452483"
+
+clusters <- sprintf("../data/processed/fvices/%s__information_track_clusters.txt",
+                    sample_to_use)
+clusters <- read.table(clusters, header = T) %>%
+  mutate(cluster = as.numeric(factor(cluster, levels = c(3,2,1), labels = 1:3)))
+
+
+mnase <- NULL
+for (motif in motifs_to_use) {
+  mnase <- bind_rows(mnase, process_rdata(motif, sample_to_use, exp))
+}
+
+# Combine tables
+mnase <- mnase %>%
+  inner_join(clusters, by = "motif") %>%
+  left_join(fvice_groups, by = "motif") %>%
+  left_join(fvices, by = "motif")
+
+# Order by f-VICE
+motifs_ordered <- mnase %>%
+  select(motif, residual) %>%
+  distinct() %>%
+  arrange(residual)
+
+mnase <- mutate(mnase,motif_ord = factor(motif, levels = motifs_ordered$motif, ordered = T))
+
+mnase2 <- mnase %>% 
+  select(motif, residual, cluster, position, normalized) %>% 
+  rename(signal = normalized) %>% 
+  mutate(type = "info")
+
+info2 <- info %>% 
+  select(motif, position, all_normalized) %>% 
+  rename(signal = all_normalized) %>% 
+  mutate(type = "mnase")
+
+d_big <- bind_rows(mnase2, info2) %>% 
+  mutate(motif_ord = factor(motif, levels = levels(mnase$motif_ord), ordered = T))
+rm(mnase2, info2)
+
+
+d <- inner_join(mnase, info, by = c("motif", "position")) %>% 
+  rename(info = all_normalized,
+         mnase = normalized)
+```
+
+```{r, fig.width=4, fig.height=3}
+d_plot <- d %>% 
+  rename(residual = residual.x,
+         cluster = cluster.x) %>% 
+  select(motif, motif_ord, position, info, mnase, residual, cluster) %>% 
+  gather("type", "signal", mnase, info) %>% 
+  mutate(type = factor(type, levels = c("info", "mnase"),
+                         labels = c("V-plot", y = "MNase"), ordered = T))
+
+pal <- rev(brewer.pal(9, 'RdBu'))
+col_limit_z <- max(abs(d_plot$signal))
+
+ggplot(d_plot, aes(x = position, y = motif_ord, fill = signal)) +
+  geom_tile() +
+  facet_wrap(~ type) +
+  scale_fill_gradient2(low = pal[1], high = pal[9], mid = pal[5], midpoint = 0) +
+  scale_x_continuous(expand = c(0,0), breaks = seq(-500,500,500), 
+                     limits = c(-500, 500)) +
+  labs(x = "Position relative to motif center (bp)", 
+       y = "Motifs sorted by f-VICE", 
+       fill = "Z-score") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+```
+
+```{r, fig.width=2, fig.height=4}
+d_trim <- d %>% 
+  rename(residual = residual.x,
+         cluster = cluster.x) %>% 
+  select(motif, motif_ord, position, info, mnase, residual, cluster) %>% 
+  filter(abs(position) <= 150)
+
+cor_summary <- d_trim %>%
+  group_by(motif) %>% 
+  summarise(spearman = cor(mnase, info, method = "s"),
+            pearson = cor(mnase, info, method = "p"),
+            residual = unique(residual),
+            cluster = unique(cluster),
+            motif_ord = unique(motif_ord)) %>% 
+  mutate(direction = case_when(spearman > 0 ~ "Positive", T ~ "Negative")) %>% 
+  mutate(direction = factor(direction, levels = c("Positive", "Negative")))
+
+cor_summary %>% 
+  filter(cluster == 3) %>% 
+  ggplot(aes(x = factor(cluster), y = motif_ord, fill = spearman)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "orange", high = "darkgreen", mid = pal[5], midpoint = 0,
+                       limits = c(-1,1)) +
+  labs(x = "Cluster", y = "Motif (sorted by f-VICE") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+```
+
+```{r, fig.width=2.25, fig.height=2.25}
+d_plot <- mnase %>% 
+  select(-cluster, -residual, -motif_ord) %>% 
+  left_join(cor_summary, by = "motif") %>% 
+  filter(cluster == 3)
+
+ggplot(d_plot, aes(x = position, y = normalized, color = spearman, group = motif)) +
+  geom_line(alpha = .10) +
+  scale_color_gradient2(low = "orange", high = "darkgreen", mid = pal[5], midpoint = 0,
+                       limits = c(-1,1)) +
+  guides(color = F) +
+  scale_x_continuous(expand = c(0,0), breaks = seq(-500,500,500)) +
+  theme(panel.grid.minor.y = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+```
+
+```{r, fig.width=2.5}
+mnase %>% 
+  filter(motif %in% c("HIC1_5", "CTCF_known2")) %>% 
+  ggplot(aes(x = position, y = signal, group = motif)) +
+  geom_line() +
+  facet_wrap(~ motif, ncol = 1) +
+  labs(x = "Position relative to bound motif center (bp)", y = "MNase RPM") +
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r, fig.width=5, fig.height=2.5}
+motif_ord <- fvices %>% 
+  arrange(residual) %>% 
+  pull(motif)
+
+col_lim <- max(abs(info$all_normalized), na.rm = T)
+cols <- rev(brewer.pal(9, 'RdBu'))
+p <- info %>% 
+  ungroup() %>% 
+  mutate(motif = factor(motif, levels = motif_ord, ordered = T)) %>% 
+  ggplot(aes(x = position, y = motif, fill = all_normalized)) +
+  geom_tile(color = NA) + 
+  scale_fill_gradient2(low = cols[1], high = cols[8], mid = cols[5], midpoint = 0,
+                       breaks = seq(-3, 3, 1)) +
+  scale_x_continuous(expand = c(0,0), breaks = c(-495, -249, 0, 249, 495), 
+                     labels = c(500, "", 0, "", 500)) +
+  facet_wrap(~ cluster, scales = 'free', nrow = 1) + 
+  labs(x = "Position (relative to motif center)", y = "Motifs sorted by f-VICE", 
+       fill = "Information\nZ-score") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+plot(p)
+```
+
+```{r, fig.width=5.5, fig.height=2.25}
+p <- ggplot(info, aes(x = position, y = all_normalized)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_line(aes(group = motif), alpha = .025) + 
+  facet_wrap(~ cluster, nrow = 1) +
+  scale_x_continuous(expand = c(0,0), breaks = c(-495, 0, 495), 
+                     labels = c(500, 0, 500)) +
+  labs(x = "Position relative to motif center (bp)", 
+       y = "Information Z-score") +
+  theme(panel.grid.minor.y = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+plot(p)
+```
+
+```{r, fig.width=5, fig.height=2.5}
+pal <- rev(brewer.pal(9, 'RdBu'))
+col_limit_z <- max(abs(mnase$normalized))
+
+p <- ggplot(mnase, aes(x = position, y = motif_ord, fill = normalized)) +
+  geom_tile() +
+  facet_wrap(~ cluster, nrow = 1, scales = "free_y") +
+  scale_fill_gradient2(low = pal[1], high = pal[8], mid = pal[5], midpoint = 0,
+                       limits = c(-col_limit_z, col_limit_z)) +
+  scale_x_continuous(expand = c(0,0), breaks = seq(-500,500,250), 
+                     labels = c(500, "", 0, "", 500)) +
+  labs(x = "Position relative to motif center (bp)", 
+       y = "Motifs sorted by f-VICE", 
+       fill = "MNase Z-score") +
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.grid = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+plot(p)
+```
+
+```{r, fig.width=5.5, fig.height=2.25}
+p <- ggplot(mnase,aes(x = position, y = normalized)) +
+  geom_hline(yintercept = 0, linetype = "dashed") +
+  geom_line(aes(group = motif), alpha = .025) +
+  facet_wrap(~ cluster, nrow = 1) +
+  labs(x = "Position relative to motif center (bp)", y = "MNase Z-score") +
+  scale_x_continuous(expand = c(0,0), breaks = seq(-500,500,500)) +
+  theme(panel.grid.minor.y = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+plot(p)
+```
+
+```{r, fig.width=8, fig.height=3}
+split(cor_summary, cor_summary$cluster) %>% 
+  lapply(function(x) {
+    summary(glm(direction ~ residual, x, family = "binomial"))
+  })
+    
+
+ggplot(cor_summary, aes(x = direction, y = residual)) +
+  geom_flat_violin(position = position_nudge(x = .25, y = 0), adjust = 1, trim = FALSE,
+                   alpha = .5) +
+  geom_point(position = position_jitter(width = .10), size = .25, alpha = .5) +
+  geom_boxplot(aes(x = as.numeric(direction) + 0.25, group = direction), 
+               outlier.shape = NA, alpha = 1, width = .1) +
+  facet_wrap(~ cluster, scales = "free") +
+  labs(x = "MNase/V-plot correlation", y = "Normalized f-VICE")
+```
+
+
+```{r}
+table(clusters$cluster)
+x <- mnase %>% select(motif, cluster, fvice) %>% distinct()
+table(x$cluster, x$fvice); rm(x)
+```
+
+
+
+
+
+
+
+```{r, fig.width=6, fig.height=2.5}
+mnase_phasing <- mnase %>% 
+  # filter(cluster == 3) %>%
+  mutate(type = case_when(abs(position) <= 25 ~ "center",
+                          abs(position) >= 125 & abs(position) <= 150  ~ "side")) %>% 
+  filter(!is.na(type)) %>% 
+  group_by(motif, type, cluster) %>% 
+  summarise(
+    # normalized = median(normalized),
+    normalized = median(signal),
+    residual= unique(residual)
+  ) %>% 
+  spread(type, normalized) %>% 
+  # mutate(diff = side - center) %>%
+  mutate(diff = log2(side / center)) %>%
+  mutate(quantile = factor(ntile(residual, 10)))
+
+x <-lapply(split(mnase_phasing, mnase_phasing$cluster), function(x){
+  print(unique(x$cluster))
+  print(cor.test(x$diff, x$residual))
+  print(cor.test(x$diff, x$residual, method = 's', exact = F))
+})
+rm(x)
+
+
+ggplot(mnase_phasing, aes(x = residual, y = diff)) + 
+  geom_point(alpha = .5) +
+  geom_smooth(method = "lm", se = F) +
+  facet_wrap(~ cluster) +
+  labs(x = "Normalized f-VICE", y = "MNase phasing") +
+  theme(strip.background = element_blank(),
+        panel.grid.minor = element_blank())
+```
+

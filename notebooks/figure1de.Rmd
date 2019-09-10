@@ -1,0 +1,153 @@
+---
+title: "Figure 1"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(knitr)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+sample <- "lab_gm12878"
+max_depth <- 24
+
+methods_to_keep <- rev(c("BMO","CENTIPEDE", 'DNase2TF', "HINT", 
+                         "CENTIPEDE_sb", "ATAC-seq peaks"))
+
+# Read data
+d <- "../data/processed/tf-binding/gm12878/f1_data.%s.txt" %>% 
+  sprintf(sample) %>% 
+  read.table(header = T, sep = "\t", stringsAsFactors = F) %>% 
+  separate(factor, into = c("factor", "motif", "experiment"), sep = "__") %>% 
+  mutate(method = gsub('WithinPeaks', 'ATAC-seq peaks', method)) %>% 
+  select(c("factor", "motif", "method", "f1", 
+           "depth", "experiment", "total_true_positives")) %>% 
+  filter(method %in% methods_to_keep) %>% 
+  mutate(f1 = case_when(is.na(f1) ~ 0, TRUE ~ f1)) %>% 
+  filter(total_true_positives >= 1000) %>% 
+  group_by(factor,motif) %>% 
+  filter(total_true_positives == max(total_true_positives))
+
+exps_to_keep <- unique(d$experiment)
+# save(exps_to_keep, file = "../data/processed/tf-binding/gm12878/exps_to_keep.RData")
+
+fvices <- "../data/processed/tf-binding/gm12878/chip_seq_fvices.%s.txt" %>% 
+  sprintf(sample) %>% 
+  read.table(header = T, sep = "\t") %>%
+  rename(fvice = pchart) %>% 
+  separate(motif, into = c("factor", "motif", "experiment"), sep = "__") %>% 
+  mutate(residual = lm(fvice ~ log10(nreads) + log10(nmotifs))$residual) %>% 
+  filter(experiment %in% exps_to_keep) %>% 
+  select(c('factor', 'motif','experiment','fvice')) %>% 
+  mutate(group10 = ntile(fvice, 10),
+         group5  = ntile(fvice, 5),
+         group4  = ntile(fvice, 4),
+         group3  = ntile(fvice, 3),
+         group2  = ntile(fvice, 2),
+         norm_ctcf = fvice / fvice[factor == 'CTCF'])
+
+ord_factors <- fvices$factor[order(fvices$fvice)]
+fvices$factor_f <- factor(fvices$factor, levels = ord_factors, ordered = T)
+fvices$group_f  <- factor(fvices$group3, levels = 1:3, ordered = T)
+
+
+d_all <- d %>% left_join(fvices, by = c("factor", "motif", "experiment")) %>% 
+  mutate(method_f = factor(method, methods_to_keep, ordered = T),
+         factor_f = factor(factor, levels = ord_factors, ordered = T),
+         group_f = factor(group3, levels = 1:3, ordered = T))
+```
+
+## f-VICE distribution
+```{r, fig.width=2, fig.height=6, fig.show='hold'}
+# dir.create("plots/tf-binding/f-vices", showWarnings = F)
+# f-VICE rank
+p <- fvices %>% 
+    mutate(factor_f = factor(factor, levels = rev(ord_factors), ordered = T)) %>% 
+    ggplot(aes(x = factor_f, y = norm_ctcf, group = 1)) + 
+    geom_line() + 
+    geom_point(size = 3) +
+    labs(x = NULL, y = "f-VICE", color = "f-VICE quintile") +
+    scale_y_continuous(breaks = seq(0,1,.5)) +
+    coord_flip() +
+    theme(panel.grid.minor.x = element_blank(),
+          panel.grid.major.y = element_blank())
+plot(p)
+```
+
+## Summary bar plots
+```{r, fig.height=4, fig.width=4}
+make_summary <- function(depth_to_keep){
+  d_summary2 <- d_all %>%
+    filter(depth == depth_to_keep) %>% 
+    group_by(factor) %>% 
+    mutate(maxf1 = max(f1, na.rm = T)) %>%
+    mutate(frac_max = f1 / maxf1) %>% 
+    ungroup() %>% 
+    group_by(method) %>% 
+    summarise(f1_sum = sum(f1, na.rm = T),
+              f1_frac_sum = sum(frac_max, na.rm = T)) %>% 
+    mutate(rank = min_rank(f1_sum)) %>% 
+    arrange(-rank) %>% 
+    mutate(method_f = factor(method, levels = method, ordered = T))
+  
+  d_summary3 <- d_all %>% 
+    filter(depth == depth_to_keep) %>% 
+    mutate(group_f = factor(group3, levels = 1:3, ordered = T),
+           method_f = factor(method, levels = d_summary2$method, ordered = T)) %>% 
+    group_by(method_f, group_f) %>%
+    summarise(f1 = sum(f1, na.rm = T),
+              n_motifs = length(factor)) %>% 
+    mutate(group_f = paste0(group_f, " (n = ", n_motifs, ")")) %>% 
+    mutate(group_f = factor(group_f, levels = unique(group_f), ordered = T)) %>% 
+    group_by(method_f, group_f) %>%
+    mutate(f1_sum = round(sum(f1), 1)) %>% 
+    ungroup()
+  
+  d_summary3_sums <- d_summary3 %>% 
+    group_by(method_f, group_f) %>% 
+    summarise(f1_sum = round(sum(f1), 1)) %>% 
+    group_by(method_f) %>% 
+    mutate(f1_pos = c(7.5, 5, 2))
+  
+  p <- ggplot(d_summary3, aes(x = method_f, y = f1, fill = group_f)) +
+    geom_col(color = 'black') +
+    geom_text(aes(y = f1_pos, label = f1_sum), d_summary3_sums) +
+    scale_fill_brewer(palette = 'Greys', direction = 1) +
+    scale_y_continuous() +
+    labs(x = "TF binding prediction method", y = "F1 score sum", 
+         fill = "f-VICE group",
+         title = sprintf("%s - %sM reads", sample, depth_to_keep)) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank())
+  plot(p)
+}
+
+make_summary(max_depth)
+
+d_all %>% 
+  filter(depth == max_depth) %>% 
+  group_by(method) %>% 
+  summarise(total_f1 = sum(f1)) %>% 
+  arrange(-total_f1)
+```

@@ -1,0 +1,132 @@
+---
+title: "Figure 3C"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(knitr)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+read_gregor <- function(infile) {
+  trait <- gsub(".*__(.*)__ld.*", "\\1", infile)
+  sample_name <- gsub("results__(.*)__.*__ld.*", "\\1", infile)
+  read.table(file.path(indir, infile), sep = "\t", header = T) %>% 
+    mutate(trait = trait, sample = sample_name)
+}
+
+
+calculate_sd <- function(sample, trait, feature) {
+  neighboorhood <- sprintf(
+    "../data/processed/eqtl/neighborhood/%s__output_%s.ld0.99__%s__neighborhoodFile.txt", 
+    sample, trait, feature
+  ) %>% 
+    read.table(skip = 1)
+  col1 <- neighboorhood$V1
+  col2 <- neighboorhood$V2
+  kd2Zero <- sum(col1 * col2 * (1-col2))
+  sqrt(kd2Zero)
+}
+
+
+indir <- "../data/processed/eqtl/"
+
+d <- list.files(indir, "results*") %>% 
+  lapply(read_gregor) %>% 
+  bind_rows()
+
+d$sd <- 1:nrow(d) %>% 
+  lapply(function(x) calculate_sd(d$sample[x], d$trait[x], d$Bed_File[x])) %>% 
+  unlist()
+
+samples_ord <- c("lab_gm12878", "buenrostro_rep1")
+
+d <- d %>% 
+  rename(feature = Bed_File) %>% 
+  mutate(feature = gsub("\\.bed$", "", feature)) %>% 
+  mutate(feature = gsub("^broad_peaks", "ATAC-seq peaks (broad)", feature)) %>% 
+  mutate(feature = gsub("^narrow_peaks", "ATAC-seq peaks (narrow)", feature)) %>% 
+  mutate(feature = gsub("^bmo_unbound", "BMO unbound", feature)) %>% 
+  mutate(feature = gsub("^bmo_bound", "BMO bound (everything)", feature)) %>% 
+  mutate(feature = gsub("^fvice_high", "BMO bound (high f-VICE)", feature)) %>% 
+  mutate(feature = gsub("^fvice_low", "BMO bound (low f-VICE)", feature)) %>% 
+  mutate(enrich_fold = InBed_Index_SNP / ExpectNum_of_InBed_SNP) %>% 
+  mutate(enrich_fold_upper = InBed_Index_SNP / (ExpectNum_of_InBed_SNP + sd)) %>% 
+  mutate(enrich_fold_lower = InBed_Index_SNP / (ExpectNum_of_InBed_SNP - sd)) %>% 
+  mutate(sample = factor(sample, levels = samples_ord, ordered = T))
+
+unique(d$sample)
+unique(d$trait)
+unique(d$feature)
+```
+
+```{r, fig.width=3.5}
+features_ord <- c("BMO unbound", "ATAC-seq peaks (broad)", "ATAC-seq peaks (narrow)", 
+                  "BMO bound (everything)", "BMO bound (low f-VICE)", 
+                  "BMO bound (high f-VICE)")
+
+d_plot <- d %>% 
+  mutate(padj = p.adjust(PValue, method = "bonferroni")) %>% 
+  filter(InBed_Index_SNP > 5) %>%
+  mutate(logp = -log10(padj)) 
+
+
+d_plot %>% 
+  mutate(feature = factor(feature, levels = rev(features_ord), ordered = T)) %>% 
+  filter(sample == "lab_gm12878") %>% 
+  filter(grepl("geuv", trait)) %>% 
+  ggplot(aes(x = feature, y = enrich_fold)) +
+  geom_point() +
+  geom_errorbar(aes(ymin = enrich_fold_lower, ymax = enrich_fold_upper), width = 0.25) +
+  geom_hline(yintercept = 1, lty = 2) +
+  scale_y_continuous(breaks = seq(1, 10, 1)) +
+  labs(x = "Feature", y = "Geuvadis LCL\ncis-eQTL\nfold enrichment") +
+  theme(panel.grid.major.y = element_blank(),
+        panel.grid.minor = element_blank()) +
+  coord_flip()
+```
+
+```{r, fig.height=5, fig.width=4}
+d_plot %>% 
+  mutate(sample = factor(sample, levels = c("lab_gm12878", "buenrostro_rep1"),
+                         labels = c("GM12878\n(this study)", "GM12878\n(Buenrostro)"),
+                         ordered = T)) %>% 
+  mutate(feature = factor(feature, levels = features_ord, ordered = T)) %>% 
+  mutate(trait = gsub("geuvadis.fdr0.05.prune0.8.maf0.0.ld0.99", "Geuvadis", trait)) %>% 
+  mutate(trait = gsub("gtex.fdr0.05.prune0.8.maf0.2.ld0.99", "GTEx\nMAF ≥ 0.2", trait)) %>% 
+  mutate(trait = gsub("gtex.fdr0.05.prune0.8.maf0.0.ld0.99", "GTEx", trait)) %>% 
+  ggplot(aes(x = feature, y = enrich_fold)) +
+  geom_hline(yintercept = 1, lty = 2) +
+  geom_point() +
+  geom_errorbar(aes(ymin = enrich_fold_lower, ymax = enrich_fold_upper), width = 0.25) +
+  scale_color_brewer(palette = "Set1") +
+  facet_grid(sample ~ trait) +
+  labs(x = "Feature", y = "LCL eQTL fold enrichment", 
+       color = "ATAC-seq sample") +
+  theme(axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1),
+        panel.grid.major.x = element_blank(),
+        panel.grid.minor = element_blank(),
+        strip.background = element_blank())
+```
+
+

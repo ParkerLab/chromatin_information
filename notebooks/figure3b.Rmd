@@ -1,0 +1,345 @@
+---
+title: "Figure 3B"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(knitr)
+library(ggplot2)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+domain_hg19 <- "../data/protein_domains/trimmed_motifs_with_lambert_DBD.bonf0.05.txt" %>% 
+  read.table(header = T, sep = "\t") %>% 
+  rename(domain_id = DBD)
+
+motifs_to_use <- read.table("../data/motif_list.trimmed.txt")[,1]
+```
+
+
+```{r}
+# Get f-VICEs associated with sample
+get_fvices <- function(sample) {
+  fvices <- read.table(
+    sprintf("../data/processed/fvices/%s.fvice.out", sample),
+    header = T, sep = "\t"
+  ) %>% 
+    filter(motif %in% motifs_to_use) %>%
+    mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual) %>% 
+    mutate(residual = residual / residual[motif == "CTCF_known2"]) %>% 
+    mutate(rank_id = rank(residual)) %>%  # increasing
+    mutate(quantile = ntile(residual, 5))
+  return(fvices)
+}
+
+
+# Count genes per protein domain in full and f-VICE datasets
+get_domain_counts_fvice <- function(fvices) {
+  domain_counts <- domain_hg19 %>% 
+    group_by(domain_id) %>% 
+    summarise(n_genes = n())
+  
+  domain_counts_fvice <- fvices %>% 
+    select(motif) %>% 
+    inner_join(domain_hg19, by = "motif") %>% 
+    group_by(domain_id) %>% 
+    summarise(n_genes = n())
+  
+  return(domain_counts_fvice)
+}
+
+
+# Make data.table for permutations
+get_input_dt <- function(fvices, return_genes_to_keep = F) {
+  dt_rank <- fvices %>%
+    select(motif, rank_id) %>%
+    # Add domain data and remove redundant rows (from motifs sharing gene IDs)
+    inner_join(domain_hg19, by = "motif") %>%
+    distinct() %>%
+    arrange(domain_id)
+  
+  # Remove genes with more than one rank (i.e. multiple motifs)
+  dt_rank_keep <- dt_rank %>%
+    select(motif, rank_id) %>%
+    group_by(motif) %>%
+    summarise(n = length(rank_id),
+              range_min = range(rank_id)[1],
+              range_max = range(rank_id)[2],
+              any_quantile = sample(rank_id, 1)) %>%
+    filter(n == 1) %>%
+    pull(motif)
+  
+  dt_rank <- dt_rank %>%
+    filter(motif %in% dt_rank_keep) %>%
+    select(-motif) %>%
+    as.data.table()
+  
+  if (!return_genes_to_keep) {
+    return(dt_rank)
+  } else {
+    return(dt_rank_keep)
+  }
+}
+
+
+# Make rank permutations using data.table
+# dt_rank: (data.table) with ranks and domain_id columns
+# chunk: (numeric) how many times to permutate data within function call
+#
+# output: long data.table with counts per quantile/domain_id/permutation
+permutate_dt_rank <- function(dt_rank, chunk) {
+  dt_rank <- copy(dt_rank)
+  d_permut <- lapply(
+    1:chunk,
+    function(i) {
+      dt_rank[, .(domain_id, rank_id = sample(rank_id, replace = F))
+              ][, .(rank_sum = sum(rank_id), n= .N, permut_id = i), 
+                by = .(domain_id)]
+    }
+  )
+  bind_rows(d_permut)
+}
+
+
+# Run permutations and calculate results
+get_permutation_results <- function(dt_rank, domain_counts_fvice){
+  
+  # Calculate observed results
+  obs_rank <- dt_rank[, .(obs = sum(rank_id), n = .N), by = .(domain_id)] %>%
+    as.data.frame()
+  
+  # Permutate data
+  res_rank <- bind_rows(
+    mclapply(
+      1:n_permut,
+      function(x) {permutate_dt_rank(dt_rank, chunk_size)},
+      mc.cores = ncores
+    )
+  )
+  
+  # Collect and format results
+  res_rank <- res_rank[, .(avg_rank_sum = rank_sum), by = .(domain_id)][
+    , .(vec = list(avg_rank_sum)), by = .(domain_id)
+    ] %>%
+    as.data.frame() %>%
+    full_join(obs_rank, by = "domain_id")
+  
+  # Calculate empirical p_value
+  res_rank$n_smaller <- unlist(
+    lapply(
+      1:nrow(res_rank),
+      function(i) {
+        sum(unlist(res_rank$vec[i]) < res_rank$obs[i])
+      }
+    )
+  )
+  res_rank$p_emp <- (res_rank$n_smaller) / total_permut
+  
+  # Calculate distributions medians
+  res_rank$dist_median <- unlist(
+    lapply(
+      1:nrow(res_rank),
+      function(i) {
+        median(unlist(res_rank$vec[i]))
+      }
+    )
+  )
+  
+  # Calculate log2 fold-enrichments
+  res_rank <- res_rank %>%
+    select(-vec) %>%
+    mutate(log2fold = log2(obs / dist_median)) %>%
+    left_join(domain_counts_fvice, by = "domain_id")
+  
+  return(res_rank)
+}
+
+
+# Format data for plotting
+get_plot_df <- function(res_rank, fvices, min_n = 5) {
+  res_rank_clean <- res_rank %>% 
+    filter(n_genes >= min_n) %>% 
+    mutate(p_emp = case_when(p_emp > 0.5 ~ 1 - p_emp, T ~ p_emp)) %>% 
+    mutate(padj = p.adjust(p_emp, method = "BH")) %>%
+    mutate(sig = padj <= 0.15) %>%
+    mutate(fdr = case_when(
+      padj < 0.05 ~ "0.05",
+      padj >= 0.05 & padj <= 0.1 ~ "0.10",
+      padj >= 0.1 & padj <= 0.15 ~ "0.15")) 
+  
+  dt_rank_keep <- get_input_dt(fvices, return_genes_to_keep = T)
+  
+  # Add f-VICE information to clusters
+  domain_fvice <- fvices %>%
+    # Remove motifs w/o gene IDs and separate multiple ensembl IDs
+    select(motif, rank_id, residual) %>%
+    # Add domain data and remove redundant rows (from motifs sharing gene IDs)
+    inner_join(domain_hg19, by = "motif") %>%
+    filter(motif %in% dt_rank_keep) %>%
+    group_by(domain_id) %>% 
+    summarise(q1 = unname(quantile(residual, 0.1)),
+              q3 = unname(quantile(residual, 0.9)),
+              max = max(residual),
+              min = min(residual),
+              n = length(residual),
+              residual = median(residual))
+  
+  res_rank_clean <- res_rank_clean %>% 
+    left_join(domain_fvice, by = "domain_id")
+  
+  return(res_rank_clean)
+}
+
+
+plot_individual_sample <- function(res_rank_clean, title_name) {
+  col_limit <- 2.44261
+  col_pal <- rev(brewer.pal(9, "RdBu"))
+  col_pal[5] <- "white"
+  
+  res_rank_clean <- res_rank_clean %>% 
+    arrange(log2fold) %>%
+    # arrange(residual) %>% 
+    mutate(domain_ord = factor(domain_id, levels = domain_id, ordered = T))
+  
+  p <- ggplot(res_rank_clean, aes(x = domain_ord, y = residual)) +
+    # Main points and f-VICE distribution
+    geom_linerange(aes(ymin = q1, ymax = q3), color = "gray") +
+    geom_point(color = "black", size = 4) +
+  labs(
+    x = "Protein domain", 
+    y = "f-VICE",
+    title = title_name) +
+    theme(
+      panel.grid.minor = element_blank(),
+      panel.grid.major.y = element_blank(), 
+      plot.margin = margin(.45, 0.3, 0.5, 0.3, unit = "in"),
+      legend.margin = margin(0.2, 0, 0, 0, unit = "in"),
+      axis.title.x = element_text(margin = margin(t = 20, b = 0))
+    ) +
+    coord_flip()
+  plot(p)
+}
+```
+
+# Permutations on f-VICE rank
+```{r, fig.width=5, fig.height=4}
+ncores <- 4
+n_permut <- 100
+chunk_size <- 1000
+total_permut <- n_permut * chunk_size
+min_n = 5
+
+samples <- c("lab_gm12878", "buenrostro_rep1", "cd4_87", "cd4_88",
+             "abcu196_4", "alpha3", "beta3", "hepg2_3", "hepg2_1")
+
+analyze_sample <- function(sample) {
+  fvices <- get_fvices(sample)
+  domain_counts_fvice <- get_domain_counts_fvice(fvices)
+  dt_rank <- get_input_dt(fvices)
+  
+  dt_rank %>% 
+    select(rank_id) %>% 
+    ggplot(aes(rank_id)) +
+    geom_histogram(color = "black", fill = "gray", bins = 100) +
+    labs(x = "f-VICE rank")
+  
+  res_rank <- get_permutation_results(dt_rank, domain_counts_fvice)
+  res_rank_clean <- get_plot_df(res_rank, fvices, min_n = min_n)
+  plot_individual_sample(res_rank_clean, title_name = sample)
+  
+  res_rank %>% mutate(sample_id = sample)
+}
+
+# all_results <- lapply(samples, analyze_sample)
+load("../data/protein_domains/protein_domains_lambert_bonf0.05.RData")
+```
+
+```{r, fig.height=5, fig.width=4}
+sample_ord <- c("cd4_87", "cd4_88", "buenrostro_rep1", "lab_gm12878", "beta3", 
+                "abcu196_4", "alpha3", "hepg2_1", "hepg2_3")
+labs <- c("CD4 cells 1", "CD4 cells 2", "Buenrostro GM12878", "Parker GM12878", 
+          "Beta cells", "Pancreatic islets", "Alpha cells", "HepG2 1", "HepG2 2")
+
+d_plot <- bind_rows(all_results)  %>%
+  mutate(sample_id = factor(sample_id, levels = sample_ord, ordered = T, labels = labs)) %>% 
+  mutate(p_emp = case_when(p_emp > 0.5 ~ 1 - p_emp, T ~ p_emp)) %>% 
+  filter(n_genes >= min_n) %>% 
+  mutate(padj = p.adjust(p_emp, method = "BH")) %>% 
+  mutate(sig = padj <= 0.10,
+         fdr = case_when(
+           padj < 0.05 ~ "0.05",
+           padj >= 0.05 & padj <= 0.1 ~ "0.10")
+  ) %>% 
+  group_by(domain_id) %>% 
+  mutate(keep = min(padj) <= 0.10) %>% 
+  ungroup()
+
+# Order domains by clustering
+domain_order <- d_plot %>%
+  select(sample_id, log2fold, domain_id) %>%
+  spread(sample_id, log2fold) %>%
+  as.data.frame() %>%
+  tibble::column_to_rownames("domain_id") %>%
+  data.matrix()
+
+sample_order <- hclust(dist(t(domain_order)))
+domain_order <- hclust(dist(domain_order))
+
+domain_order <- domain_order$labels[domain_order$order]
+
+domain_order_keep <- d_plot %>%
+  filter(keep) %>%
+  select(sample_id, log2fold, domain_id) %>%
+  spread(sample_id, log2fold) %>%
+  as.data.frame() %>%
+  tibble::column_to_rownames("domain_id") %>%
+  data.matrix()
+
+domain_order_keep <- hclust(dist(domain_order_keep, method = "euclidean"))
+
+plot(domain_order_keep, hang = -1, xlab = "DBD", sub = NA)
+plot(sample_order, hang = -1, xlab = "Sample", sub = NA)
+
+domain_order_keep <- domain_order_keep$labels[domain_order_keep$order]
+```
+
+```{r, fig.height=5, fig.width=5.5}
+d_plot_keep <- d_plot %>% 
+  filter(keep) %>% 
+  mutate(domain_ord = factor(domain_id, levels = domain_order_keep, ordered = T))
+
+col_limit <- max(abs(d_plot_keep$log2fold))
+col_pal <- rev(brewer.pal(9, "RdBu"))
+col_pal <- c(col_pal[1:2], "white", col_pal[8:9])
+ggplot(d_plot_keep, aes(x = sample_id, y = domain_ord, fill = log2fold)) +
+  geom_tile() +
+  geom_point(aes(size = fdr), data = filter(d_plot_keep, sig), 
+             color = "black", shape = 1) +
+  scale_fill_gradientn(colors = col_pal, limits = c(-col_limit, col_limit)) +
+  scale_size_manual(values = rev(c(0.5, 1.5))) +
+  labs(x = "ATAC-seq sample", y = "Protein domain",
+       fill = "f-VICE enrichment\n(log2-fold)", size = "FDR") +
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1),
+        panel.grid.minor = element_blank(),
+        panel.grid.major = element_blank())
+```
+
