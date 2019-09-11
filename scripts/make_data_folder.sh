@@ -153,3 +153,6 @@ outdir="data/processed/asymmetry"
 cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry/*.RData ${outdir}
 cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry/sides_prox_dista_lab_gm12878.RData ${outdir}
 cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry_cage10/info_prox_distal_lab_gm12878.RData ${outdir}
+
+# Make archive
+tar -zcvf chromatin_information_manuscript_data.tar.gz data

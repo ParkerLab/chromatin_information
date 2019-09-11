@@ -15,7 +15,6 @@ rule hint:
         handle = "{sample}_{depth}_HINT"
     shell:
         """
-        module load rgt/0.12.1
         ionice -c2 -n7 rgt-hint footprinting --paired-end --atac-seq \
             --output-location={params.output} \
             --output-prefix={params.handle} {input.bam} {input.peaks}

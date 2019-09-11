@@ -34,12 +34,13 @@ source activate chromatin_information
 ```
 
 ### Manually installing dependencies
-All requirements (except for Slurm) are included in the conda virtual environment provided here (`environment.yml`). We highly recommend you to use it. If that is not an option, below are the core requirements:
-* [Snakemake](https://snakemake.readthedocs.io/en/stable/) (5.5.0+)
-* [Slurm](https://slurm.schedmd.com) (16.05.09+) or some other job scheduler. The cluster config files here are set up for slurm.
-* [Rstudio](https://www.rstudio.com) (1.1.456+). Required for the RMarkdown notebooks
-* [R](https://www.r-project.org) (3.5.1+). Note that each notebook will have different package requirements.
-* [Python](https://www.python.org) (3.5.3+)
+All requirements (except for Slurm) are included in the conda virtual environment provided here (`environment.yml`). We highly recommend you to use it. If that is not an option, below are the core requirements and the versions we used:
+* [Snakemake](https://snakemake.readthedocs.io/en/stable/) (5.5.0)
+* [Slurm](https://slurm.schedmd.com) (16.05.09) or some other job scheduler. The cluster config files here are set up for slurm.
+* [Rstudio](https://www.rstudio.com) (1.1.456). Required for the RMarkdown notebooks
+* [R](https://www.r-project.org) (3.5.1). Note that each notebook will have different package requirements.
+* [Python](https://www.python.org) (3.5.3)
+* [ngsplot](https://github.com/shenlab-sinai/ngsplot) (2.63)
 
 ## Contact
 * For questions directly about the paper, the corresponding author is Dr. Stephen C.J. Parker (scjp@umich.edu).
