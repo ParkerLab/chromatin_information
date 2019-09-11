@@ -3,10 +3,6 @@ _A companion repository_
 
 Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Peter Orchard, Jacob O. Kitzman, Stephen C. J. Parker
 
-## To-do
-- [ ] Auxiliary scripts
-    - [ ] conda environment
-
 ## Description
 This repository will allow you to generate all the main figures from our manuscript.
 

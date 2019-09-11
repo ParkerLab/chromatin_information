@@ -1,6 +1,7 @@
 # PIQ
 MATX_DIR = "../../data/pwm"
 PIQ_SW = "../../sw/PIQ"
+BIN = "../../bin"
 
 rule fetch_scripts:
     input:
@@ -19,7 +20,7 @@ rule convert_pwms:
     output:
         os.path.join(PIQ_DIR, "motifs", "{motif}.jaspar")
     params:
-        script = os.path.join(PIQ_SW, "scripts_albanus", "mat2jaspar.R"),
+        script = os.path.join(BIN, "mat2jaspar.R"),
         motif = "{motif}"
     shell:
         """
