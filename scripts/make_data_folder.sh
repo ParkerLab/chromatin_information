@@ -3,6 +3,11 @@
 # ** Not a literal script **
 # The directories have to be created manually for now. Use this for reference.
 
+# Make archive
+tar -zcvf chromatin_information_manuscript_data.tar.gz data
+
+
+
 # Scripts
 cp /home/albanus/manuscripts/atac-seq_information/micro_analyses/vplots_chip_sameN/downsample2.R \
     scripts/
@@ -154,5 +159,16 @@ cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry/*.RData ${ou
 cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry/sides_prox_dista_lab_gm12878.RData ${outdir}
 cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry_cage10/info_prox_distal_lab_gm12878.RData ${outdir}
 
-# Make archive
-tar -zcvf chromatin_information_manuscript_data.tar.gz data
+# Motif pwms
+outdir="data/pwm"
+mkdir ${outdir}
+for f in `ls /lab/data/motifs/pwm/ENCODE2013/hg18_matrixes/*.mat | grep -v "_disc"`
+do
+    cp ${f} ${outdir}
+done
+for f in `ls /lab/data/motifs/pwm/JASPAR2014/hg18_matrixes/*.mat`
+do
+    cp ${f} ${outdir}
+done
+
+

@@ -172,6 +172,26 @@ rule all:
             depth=depths,
             motif=get_motifs()
         ) for sample, depths in subsample_depths.items()],
+        # PIQ - binarized files
+        [expand(
+            os.path.join(
+                PIQ_DIR,
+                "processed_output_binary", "{sample}", "{depth}M.{motif}.bed"
+            ),
+            sample=sample,
+            depth=depths,
+            motif=get_motifs()
+        ) for sample, depths in subsample_depths.items()],
+        # PIQ - scores files
+        [expand(
+            os.path.join(
+                PIQ_DIR,
+                "processed_output_scores", "{sample}", "{depth}M.{motif}.bed"
+            ),
+            sample=sample,
+            depth=depths,
+            motif=get_motifs()
+        ) for sample, depths in subsample_depths.items()],
 
         # Motifs in peaks (binary)
         [expand(
@@ -217,6 +237,7 @@ include: "rules/tf-binding_dnase2tf.smk"
 include: "rules/tf-binding_centipede.smk"
 include: "rules/tf-binding_bmo.smk"
 include: "rules/tf-binding_centipede_singlebin.smk"
+include: "rules/tf-binding_piq.smk" 
 
 # # Compare methods
 include: "rules/tf-binding_evaluate.smk"

@@ -6,7 +6,11 @@ channels:
     - r
     - defaults
 dependencies:
-    # main
     - python=3.5.3
     - r=3.5.1
-   
+    - pysam=0.10.0
+    - samtools=1.9
+    - bedtools=2.26.0
+    - snakemake=5.5.0
+   # - atactk=0.1.9
+   # - bioconda-rgt=0.12.1
