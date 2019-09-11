@@ -146,9 +146,7 @@ c1 <- d_frap %>%
             residual_p = cor.test(residual, log10(frap_time), method = 's', exact = F)$p.value,
             fvice_corr = cor.test(pchart, log10(frap_time), method = 's', exact = F)$estimate,
             fvice_p = cor.test(pchart, log10(frap_time), method = 's', exact = F)$p.value,
-            method = "spearman") %>% 
-  mutate(adj_p = p.adjust(residual_p, method = "holm")) %>% 
-  mutate(adj_p_fvice = p.adjust(fvice_p, method = "holm"))
+            method = "spearman")
 
 c2 <- d_frap %>% 
   group_by(sample) %>% 
@@ -156,9 +154,7 @@ c2 <- d_frap %>%
             residual_p = cor.test(residual, log10(frap_time), method = 'p', exact = F)$p.value,
             fvice_corr = cor.test(pchart, log10(frap_time), method = 'p', exact = F)$estimate,
             fvice_p = cor.test(pchart, log10(frap_time), method = 'p', exact = F)$p.value,
-            method = "pearson") %>% 
-  mutate(adj_p = p.adjust(residual_p, method = "bonferroni")) %>% 
-  mutate(adj_p_fvice = p.adjust(fvice_p, method = "bonferroni"))
+            method = "pearson")
 
 # Robust regression
 c3 <- d_frap %>% 
@@ -169,17 +165,18 @@ c3 <- d_frap %>%
             method_rr = "rr") %>% 
   # Calculate p-values (pt * 2 for two-tailed test - same as lm)
   mutate(residual_p_rr = pt(residual_t, df = residual_df, lower.tail = F) * 2) %>% 
-  mutate(adj_p_rr = p.adjust(residual_p_rr, method = "holm"))
+  mutate(adj_p_rr = p.adjust(residual_p_rr, method = "bonferroni"))
 
 corrs <- bind_rows(c1,c2) %>% 
   left_join(c3, by = "sample")
 
 p <- corrs %>% 
   mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
-  ggplot(aes(x = sample, y = residual_corr, fill = adj_p <= 0.05)) +
+  ggplot(aes(x = sample, y = residual_corr, fill = residual_p <= 0.05)) +
   geom_col() +
   facet_wrap(~ method) +
-  labs(x = "ATAC-seq sample", y = "f-VICE / FRAP correlation") +
+  labs(x = "ATAC-seq sample", y = "f-VICE / FRAP correlation",
+       fill = "Significant") +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = .5))
 plot(p)
 ```

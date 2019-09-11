@@ -45,6 +45,16 @@ do
     cp ${f} ${outdir}/${base}
 done
 
+indir="/lab/work/albanus/2018_gm12878_mnase-seq/work/ctcf_cohesin/ngsplot/\
+lab_gm12878/ext_500"
+outdir="data/processed/mnase/ctcf_cohesin"
+mkdir -p ${outdir}
+for f in `ls ${indir}/SRR452483.CTCF*/avgprof.RData`
+do
+    base=`echo ${f} | sed 's/.*\/\(SRR\)/\1/g; s/\//./g'`
+    cp ${f} ${outdir}/${base}
+done
+
 # GREGOR neiborhood files
 outdir="data/processed/eqtl/neighborhood"
 mkdir -p ${output}
@@ -88,3 +98,55 @@ do
         cp ${f} ${out}
     done
 done
+
+indir="/lab/work/albanus/2018_cohesin_and_tfs/work/vplots_same_n_2019/\
+lab_gm12878"
+outdir="data/processed/ctcf_cohesin/lab_gm12878"
+mkdir -p ${outdir}
+for f in `ls ${indir}/*.posinfo.gz`
+do
+    base=`basename ${f}`
+    out="${outdir}/${base}"
+    cp ${f} ${out}
+done
+
+indir="/lab/work/albanus/2018_cohesin_and_tfs/work/vplots_same_n_2019/\
+lab_gm12878"
+outdir="data/processed/ctcf_cohesin/lab_gm12878"
+mkdir -p ${outdir}
+for f in `ls ${indir}/*.posinfo.gz`
+do
+    base=`basename ${f}`
+    out="${outdir}/${base}"
+    cp ${f} ${out}
+done
+
+samples="lab_gm12878_sonicated_3 lab_gm12878_subsampled_3"
+for i in ${samples}
+do
+    indir="/lab/work/albanus/2018_cohesin_and_tfs/work/vplots_same_n_manual_redo2/${i}"
+    outdir="data/processed/ctcf_cohesin/${i}"
+    mkdir -p ${outdir}
+    for f in `ls ${indir}/*.posinfo.gz`
+    do
+        base=`basename ${f}`
+        out="${outdir}/${base}"
+        cp ${f} ${out}
+    done
+done
+mv data/processed/ctcf_cohesin/lab_gm12878_subsampled_3 \
+    data/processed/ctcf_cohesin/lab_gm12878_downsampled
+
+# Asymmetry
+# indir="/lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry/lab_gm12878"
+# outdir="data/processed/asymmetry/permutations"
+# mkdir -p ${outdir}
+# while read motif
+# do
+#     cp ${indir}/${motif}.everything.RData ${outdir}
+# done < data/motif_list.trimmed.txt
+
+outdir="data/processed/asymmetry"
+cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry/*.RData ${outdir}
+cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry/sides_prox_dista_lab_gm12878.RData ${outdir}
+cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/vplot_asymmetry_cage10/info_prox_distal_lab_gm12878.RData ${outdir}

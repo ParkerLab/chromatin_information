@@ -9,32 +9,6 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
     - [ ] install_dependencies.R
     - [ ] download_fastq.sh
     - [ ] download_processed_files.sh
-- [ ] Notebooks
-    - [ ] Figure 1
-    - [ ] Figure 2
-    - [ ] Figure 3
-- [x] Processed data
-    - [x] Motif scans
-    - [x] 6-mer scans
-    - [x] ChIP-seq bound motifs (GM12878)
-    - [x] Motif f-VICEs
-    - [x] 6-mer f-VICEs
-    - [x] Asymmetry
-    - [x] TF-binding comparisons
-    - [x] Protein domains
-    - [x] FRAP times
-- [x] Analyses
-    - [x] 0_mapping
-    - [x] 1bcd_vplots
-    - [x] 1e_bmo
-        - [x] PIQ
-        - [x] HepG2
-    - [x] 1f_fvices
-    - [x] 2bc_ctcf-cohesin
-    - [x] 2e_mnase
-    - [x] 2f_asymmetry
-    - [x] 3c_enrichments
-    - [x] 3efg_6mers
 
 ## Description
 This repository will allow you to generate all the main figures from our manuscript.

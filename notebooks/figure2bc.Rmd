@@ -1,5 +1,5 @@
 ---
-title: "PLACEHOLDER"
+title: "Fig 2BC"
 output:
   html_document:
     theme: readable
@@ -21,10 +21,223 @@ library(dplyr)
 library(tidyr)
 library(scales)
 
-# source("~/scripts/R_rainclouds.R")
-
-knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
 knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
 
 theme_set(theme_bw(base_size = 12))
 ```
+
+## Fig 1B
+```{r}
+sample <- c("lab_gm12878")
+types <- c("minus", "plus")
+exp <- "CTCF__CTCF_known2__ENCFF963PJY-CTCF__ENCFF753RGL"
+
+read_vplot <- function(sample, exp, type) {
+  indir <- file.path("../data/processed/ctcf_cohesin", sample)
+  infile <- file.path(indir, sprintf("%s.%s.posinfo.gz", exp, type))
+  infile %>% 
+    read.table(header = T) %>% 
+    mutate(sample = sample, type = type, exp = exp)
+}
+
+d <- lapply(types, function(type) {
+      read_vplot(sample, exp, type)
+    }) %>% 
+  bind_rows() %>% 
+  select(type, sample, position, all_normalized, exp)
+
+d_all <- d %>%
+  mutate(type = factor(type, levels = c(types), 
+                        labels = c("CTCF-cohesin (-)", "CTCF-cohesin (+)"), 
+                       ordered = T))
+```
+
+```{r, fig.width=8, fig.height=2}
+d_all %>% 
+  ggplot(aes(x = position, y = all_normalized)) +
+  geom_line(group = 1) +
+  geom_hline(yintercept = 0, lty = 2) +
+  facet_wrap(~ type, ncol = 2) +
+  scale_x_continuous(expand = c(0,0), limits = c(-501,501)) +
+  scale_y_continuous(breaks = seq(-1, 1, .5), limits = c(-.3, 1.2)) +
+  labs(x = "Position relative to bound motif center (bp)", 
+       y = "Chromatin\ninformation (log2)") +
+  theme(panel.grid.minor = element_blank(),
+        panel.spacing.x = unit(20, "pt"),
+        strip.background = element_blank())
+```
+
+```{r, fig.width=8, fig.height=2}
+indir <- "../data/processed/mnase/ctcf_cohesin"
+infiles <- list.files(indir) 
+
+process_rdata <- function(infile){
+  load(file.path(indir, infile))
+  handle = gsub(".avgprof.RData", "", infile)
+  d <- data.frame(
+    position = seq(-500,500, 10), # ngsplot gives 100 positions on x-axis
+    signal = regcovMat[,1],
+    conf = confiMat[,1]
+  ) %>% 
+    mutate(info = handle) %>% 
+    separate(info, into = c("exp", "foo", "cohesin"), sep = "\\.", remove = F) %>% 
+    separate(foo, into = c("tf", "motif", "exp", "exp_cohesin"), sep = "__")
+}
+
+d <- lapply(infiles, process_rdata) %>% 
+  bind_rows()
+
+ctcf <- d %>% 
+  mutate(exp = gsub("-CTCF$", "", exp)) %>% 
+  mutate(exp_cohesin = gsub("merged_gm12878", "Union", exp_cohesin)) %>% 
+  mutate(cohesin = factor(cohesin, labels = c("CTCF-cohesin (-)", "CTCF-cohesin (+)")))
+
+ctcf %>% 
+  filter(grepl("RGL$", exp_cohesin),
+         grepl("PJY", exp)) %>% 
+  ggplot(aes(x = position, y = signal, group = info)) +
+  geom_line(alpha = 1) +
+  scale_x_continuous(expand = c(0,0)) +
+  labs(x = "Position relative to bound motif center",
+       y = "MNase reads per\nmillion mapped reads", color = "CTCF experiment") + 
+  facet_wrap(~ cohesin) + 
+  theme(panel.grid.minor = element_blank(),
+        panel.spacing.x = unit(20, "pt"),
+        strip.background = element_blank())
+```
+
+## Fig 1C
+```{r, fig.width=8, fig.height=2}
+samples <- c("lab_gm12878_downsampled", "lab_gm12878_sonicated_3")
+types <- c("minus", "plus")
+exps <- c("CTCF__CTCF_known2__ENCFF963PJY-CTCF__ENCFF002CPK")
+
+d <- lapply(samples, function(sample) {
+  lapply(exps, function(exp) {
+    lapply(types, function(type) {
+      read_vplot(sample, exp, type)
+    }) %>% bind_rows()
+  }) %>% bind_rows()
+}) %>% bind_rows() %>% 
+  select(type, sample, position, all_normalized, exp)
+
+d_diff <- d %>% 
+  mutate(sample = gsub(".*(sonicated|downsampled).*", "\\1", sample)) %>% 
+  spread(sample, all_normalized) %>% 
+  mutate(all_normalized = downsampled - sonicated,
+         sample = "Difference") %>% 
+  select(-downsampled, -sonicated, -exp)
+  
+
+d_all <- d %>%
+  bind_rows(d_diff) %>% 
+  mutate(sample = factor(sample, levels = c(samples, "Difference"), 
+                         labels = c("Non-sonicated", "Sonicated", "Difference"), ordered = T)) %>% 
+  mutate(type = factor(type, levels = types, 
+                       labels = c("CTCF-cohesin(-)", "CTCF-cohesin(+)"), ordered = T))
+
+
+d_diff_colors <- d %>% 
+  left_join(select(d_diff, -sample), by = c("type", "position")) %>% 
+  filter(abs(position) <= 255) %>% 
+  rename(all_normalized = all_normalized.x,
+         diff = all_normalized.y) %>% 
+  mutate(diff = case_when(grepl("sonicated", sample) ~ diff * -1, T ~ diff)) %>% 
+  mutate(sample = factor(sample, levels = samples, 
+                         labels = c("Conventional", "Sonication"), ordered = T)) %>% 
+  mutate(type = factor(type, levels = types, 
+                       labels = c("CTCF-cohesin(-)", "CTCF-cohesin(+)"), ordered = T))
+  
+pal <- rev(brewer.pal(9, "RdBu"))
+pal[4:6] <- "white"
+
+d_diff_colors %>%
+  filter(sample == "Conventional") %>% 
+  ggplot(aes(x = position, y = all_normalized)) +
+  geom_line(aes(color = diff), group = 1, size = 2) +
+  geom_line(group = 1, alpha = .25, size = .5, lty = 1) +
+  geom_hline(yintercept = 0, lty = 2) +
+  facet_grid(sample ~ type) +
+  scale_x_continuous(breaks = c(-250, 0, 250), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(-1, 1, .5), limits = c(-.2, 1)) +
+  scale_color_gradientn(colors = pal, lim = c(-.55,.55), breaks = c(-.5, 0, .5)) +
+  labs(x = "Position relative to bound motif center (bp)",
+       y = "Chromatin\ninformation (log2)",
+       color = "∆\n(vs sonicated)") +
+  theme(panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+```
+
+```{r, fig.width=6.7, fig.height=2}
+d_all %>% 
+  filter(sample == "Sonicated") %>%
+  filter(abs(position) <= 255) %>% 
+  ggplot(aes(x = position, y = all_normalized)) +
+  geom_line(group = 1, alpha = .5) +
+  geom_hline(yintercept = 0, lty = 2) +
+  facet_grid(sample ~ type) +
+  scale_x_continuous(breaks = c(-250, 0, 250), expand = c(0,0)) +
+  scale_y_continuous(breaks = seq(-1, 1, .5), limits = c(-.2, 1)) +
+  labs(x = "Position relative to bound motif center (bp)",
+       y = "Chromatin\ninformation (log2)",
+       color = "∆\n(vs sonicated)") +
+  theme(panel.grid.minor = element_blank(),
+        strip.background = element_blank(),
+        panel.spacing.x = unit(20, "pt"))
+```
+
+
+## Supplementary figures
+```{r, fig.width=8, fig.height=5}
+ggplot(ctcf, aes(x = position, y = signal, group = info, color = exp)) +
+  geom_line(alpha = .5) +
+  facet_grid(exp_cohesin ~ cohesin) +
+  labs(x = "Position relative to motif center (bp)", 
+       y = "MNase reads per million mapped reads",
+       color = "CTCF ChIP-seq") +
+  theme(strip.background = element_blank())
+```
+
+
+```{r, fig.width=8, fig.height=5}
+exps <- c("CTCF__CTCF_known2__ENCFF096AKZ-CTCF__ENCFF002CHR",
+          "CTCF__CTCF_known2__ENCFF096AKZ-CTCF__ENCFF002CPK",
+          "CTCF__CTCF_known2__ENCFF096AKZ-CTCF__ENCFF753RGL",
+          "CTCF__CTCF_known2__ENCFF096AKZ-CTCF__merged_gm12878",
+          "CTCF__CTCF_known2__ENCFF710VEH-CTCF__ENCFF002CHR",
+          "CTCF__CTCF_known2__ENCFF710VEH-CTCF__ENCFF002CPK",
+          "CTCF__CTCF_known2__ENCFF710VEH-CTCF__ENCFF753RGL",
+          "CTCF__CTCF_known2__ENCFF710VEH-CTCF__merged_gm12878",
+          "CTCF__CTCF_known2__ENCFF963PJY-CTCF__ENCFF002CHR",
+          "CTCF__CTCF_known2__ENCFF963PJY-CTCF__ENCFF002CPK",
+          "CTCF__CTCF_known2__ENCFF963PJY-CTCF__ENCFF753RGL",
+          "CTCF__CTCF_known2__ENCFF963PJY-CTCF__merged_gm12878")
+
+all_exps <- lapply(types, function(type) {
+  lapply(exps, function(exp) {
+      read_vplot(sample, exp, type)
+  }) %>% bind_rows()
+    }) %>% 
+  bind_rows() %>% 
+  select(type, sample, position, all_normalized, exp) %>% 
+  mutate(type = factor(type, levels = c(types), 
+                        labels = c("CTCF-cohesin (-)", "CTCF-cohesin (+)"), 
+                       ordered = T)) %>% 
+  separate(exp, into = c("tf", "motif", "ctcf", "cohesin"), sep = "__") %>% 
+  mutate(ctcf = gsub("-CTCF", "", ctcf)) %>% 
+  mutate(cohesin = gsub("merged.*", "Union", cohesin))
+  
+
+all_exps %>% 
+  ggplot(aes(x = position, y = all_normalized, color = ctcf, group = ctcf)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_line(alpha = .5) +
+  facet_grid(cohesin ~ type) +
+  labs(x = "Position relative to motif center (bp)", 
+       y = "Chromatin information (log2)",
+       color = "CTCF ChIP-seq") +
+  theme(strip.background = element_blank())
+```
+

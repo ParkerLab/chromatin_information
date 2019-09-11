@@ -1,5 +1,5 @@
 ---
-title: "PLACEHOLDER"
+title: "Fig 2FG"
 output:
   html_document:
     theme: readable
@@ -21,10 +21,446 @@ library(dplyr)
 library(tidyr)
 library(scales)
 
-# source("~/scripts/R_rainclouds.R")
-
-knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
 knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
 
 theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+my_sample <- "lab_gm12878"
+
+# cantor <- list.files("work/f-vices_1KG/vplot_asymmetry/lab_gm12878",
+#                        pattern = ".RData", full.names = T)
+# asymm_vec <- lapply(cantor, function(x){
+#     load(x)
+#     return(asymmetry_df_signed)
+#     }) %>% bind_rows()
+# save(asymm_vec, file = sprintf("work/f-vices_1KG/vplot_asymmetry/%s.RData", my_sample))
+
+# asymm_ks <- lapply(cantor, function(x){
+#   load(x)
+#   null_mean <- mean(asymmetry_dist)
+#   null_sd <- sd(asymmetry_dist)
+#   norm_dist <- rnorm(10000, null_mean, null_sd)
+#   ks <- ks.test(asymmetry_dist, norm_dist)
+#   data.frame(motif = args$name, d = ks$statistic, p = ks$p.value)
+#   }) %>% bind_rows()
+# save(asymm_ks, file = sprintf("work/f-vices_1KG/vplot_asymmetry/%s_KS.RData", my_sample))
+
+# fvices_files <- list.files("../2019_vplots_new/work/f-vices_1KG/vplots/lab_gm12878",
+#                        pattern = ".out", full.names = T)
+# fvices <- lapply(fvices_files, function(x){
+#     motif_name <- gsub(".*/", "", x)
+#     motif_name <- gsub("\\.out", "", motif_name)
+#     d <- read.table(x, header = T, sep = "\t") %>%
+#         mutate(motif = motif_name)
+#     return(d)
+# }) %>% bind_rows()
+# save(fvices, file = "work/f-vices_1KG/vplot_asymmetry/fvices.RData")
+
+# Take processed files
+load(sprintf("../data/processed/asymmetry/%s.RData", my_sample))
+load(sprintf("../data/processed/asymmetry/fvices_%s.RData", my_sample))
+load(sprintf("../data/processed/asymmetry/%s_KS.RData", my_sample))
+
+motifs_to_use <- read.table("../data/motif_list.trimmed.txt")[,1]
+asymm_ks <- filter(asymm_ks, motif %in% motifs_to_use)
+asymm_vec <- filter(asymm_vec, motif %in% motifs_to_use)
+
+# vplot_dir <- file.path("../2019_vplots_new/work/f-vices_1KG/vplots", my_sample)
+# side_info <- lapply(asymm$motif, function(motif) {
+#   file.path(vplot_dir, sprintf("%s.posinfo.gz", motif)) %>% 
+#     read.table(header = T) %>% 
+#     mutate(side = case_when(position < 0 ~ "left",
+#                             position > 0 ~ "right",
+#                             T ~ "center")) %>% 
+#     filter(side != "center") %>% 
+#     filter(all_normalized > 0) %>% 
+#     group_by(side) %>% 
+#     summarise(info = sum(all_normalized)) %>% 
+#     mutate(motif = motif) %>% 
+#     spread(side, info)
+# }) %>% 
+#   bind_rows() %>% 
+#   mutate(side = case_when(left > right ~ "left", T ~ "right"))
+# save(side_info, file = sprintf("work/f-vices_1KG/vplot_asymmetry/sides_%s.RData", my_sample))
+
+load(sprintf("../data/processed/asymmetry/sides_%s.RData", my_sample))
+```
+
+## Observed asymmetries
+```{r, fig.width=6}
+ALPHA = 0.05
+p_thresh_bf <- ALPHA / nrow(asymm_vec)
+
+asymm <- asymm_vec %>% 
+  mutate(
+    p_empir = (n_larger + 1) / n,
+    p_est = pnorm(observed_asymm, dist_mean, dist_sd, lower.tail = F),
+    z_score = (observed_asymm - dist_mean) / dist_sd
+  ) %>%
+  mutate(p_est_adj = p.adjust(p_est, method = "bonferroni"),
+         sig = p_est < p_thresh_bf) %>% 
+  # left_join(fvices, by = "motif") %>%
+  # mutate(residual = pchart)
+  inner_join(fvices, by = "motif") %>%
+  left_join(side_info, by = "motif") %>% 
+  mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual) %>% 
+  # Add a scaling factor to make values in the same range as the V-plots
+  mutate(observed_asymm = observed_asymm * 3)
+
+ggplot(asymm, aes(x = observed_asymm, y = -log10(p_est))) +
+  geom_hline(yintercept = -log10(p_thresh_bf), color = "red", lty = 2) +
+  geom_point(aes(color = sig), alpha = .15) +
+  scale_color_manual(values = c("black", "red")) +
+  labs(x = "V-plot information asymmetry (absolute)", y = "-log10 estimated p-value",
+       color = "Bonferroni ≤ 0.05") +
+  theme(panel.grid.minor = element_blank())
+```
+
+```{r, fig.width=6, fig.height=2}
+ggplot(asymm, aes(observed_asymm)) +
+  geom_histogram(bins = 30, color = "black", fill = "gray") +
+  labs(x = "Observed asymmetry", y = "Number of motifs") 
+```
+
+```{r, fig.width=6, fig.height=3}
+motifs_asymm <- asymm %>% 
+  filter(sig) %>% 
+  arrange(p_est) %>% # sort by significance
+  head(3) %>% 
+  pull(motif)
+indir <- file.path("../data/processed/chromatin_information", my_sample)
+
+read_posinfo <- function(motif, indir) {
+  infile <- file.path(indir, paste0(motif, ".posinfo.gz"))
+  data.table::fread(infile, header = T, data.table = F)[, c(1, 5, 4)]
+}
+
+plot_posinfo <- function(motif) {
+  p <- posinfo[[motif]] %>% 
+    rename(info = all_normalized) %>% 
+    mutate(
+      area_type = case_when(position < 0 ~ "Left", position > 0 ~ "Right")
+    ) %>% 
+    mutate(
+      area_type = factor(area_type, levels = c("Left", "Right"), 
+                         ordered = T)
+    )
+  p$motif <- motif
+  ymax <- max(p$info) + 0.01
+  ggplot(p, aes(x = position, y = info)) +
+    geom_vline(xintercept = 0, lty = 2) +
+    geom_area(aes(fill = area_type), alpha = .8) +
+    geom_line(aes(group = motif)) +
+    facet_wrap(~ motif) +
+    coord_cartesian(xlim = c(-250, 250), ylim = c(0, ymax)) +
+    scale_y_continuous(expand = c(0,0)) +
+    scale_fill_manual(
+      breaks = c("Left", "Right"), 
+      values = viridisLite::viridis(2)
+    ) +
+    labs(
+      x = "Position relative to motif center (bp)", 
+      y = "Information content enrichment (log2)",
+      fill = "Position"
+    ) +
+    theme(panel.grid.minor = element_blank(),
+          strip.background = element_blank(),
+          strip.text = element_text(hjust = 1, face = "bold"))
+  # plot(p)
+}
+
+posinfo <- lapply(motifs_asymm, read_posinfo, indir)
+names(posinfo) <- motifs_asymm
+
+lapply(motifs_asymm, plot_posinfo)
+
+```
+
+```{r, fig.width=3.5, fig.height=3}
+# tss_dir <- file.path("work/f-vices_1KG/vplot_asymmetry_cage10", my_sample)
+# tss_info <- asymm %>% 
+#   pull(motif) %>% 
+#   lapply(function(motif) {
+#     tss <- file.path(tss_dir, sprintf("%s.bound.nearest_tss.bed", motif)) %>% 
+#       data.table::fread(sep = "\t", data.table = F) %>% 
+#       rename(type = V12, dist = V13) %>% 
+#       mutate(median_tss_dist = median(dist)) %>% 
+#       mutate(median_tss_dist_abs = median(abs(dist))) %>% 
+#       mutate(tss_dist_sd = sd(dist)) %>% 
+#       mutate(tss_dist_iqr = IQR(dist)) %>% 
+#       filter(abs(dist) <= 1000 & dist !=0) %>% 
+#       mutate(motif = motif) %>% 
+#       group_by(motif, type) %>% 
+#       summarise(n = n(),
+#                 left = sum(dist < 0),
+#                 right = sum(dist > 0),
+#                 median_tss_dist = unique(median_tss_dist),
+#                 median_tss_dist_abs = unique(median_tss_dist_abs),
+#                 tss_dist_sd = unique(tss_dist_sd),
+#                 tss_dist_iqr = unique(tss_dist_iqr))
+#   }) %>% 
+#   bind_rows()
+# save(tss_info, file = sprintf("work/f-vices_1KG/vplot_asymmetry/tss_info_all_regions_%s.RData", my_sample))
+
+load(file = sprintf("../data/processed/asymmetry/tss_info_all_regions_%s.RData", my_sample))
+  
+d <- asymm %>% 
+  select(motif, observed_asymm, left, right, side, sig) %>% 
+  rename(left_info = left, right_info = right) %>% 
+  left_join(tss_info, by = "motif") %>% 
+  filter(type == "protein_coding") %>% 
+  mutate(observed_asymm = case_when(side == "left" ~ -observed_asymm, 
+                                    T ~ observed_asymm)) %>% 
+  mutate(tss_asymm = right - left) %>% 
+  mutate(tss_asymm_ratio = log2(right / left)) %>% 
+  mutate(info_asymm = right_info - left_info) %>% 
+  mutate(info_asymm_ratio = log2(right_info / left_info))
+
+d_plot_sig <- d %>% 
+  filter(sig)
+
+ggplot(d_plot_sig, aes(x = info_asymm, y = tss_asymm_ratio)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = 0, lty = 2) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F, lty = 2, color = "black") +
+  scale_y_continuous(breaks = seq(-1, 1, .25)) +
+  labs(x = "V-plot information asymmetry", 
+       y = "Motif-oriented TSS\nproximity bias (log2)") +
+  theme(panel.grid.minor = element_blank())
+
+with(d_plot_sig, cor.test(info_asymm, tss_asymm_ratio, method = "s", exact = F))
+with(d_plot_sig, cor.test(info_asymm, tss_asymm_ratio, method = "p", exact = F))
+```
+
+```{r, fig.width=4, fig.height=2.5}
+d_plot_sig %>% 
+  select(motif, tss_asymm_ratio, median_tss_dist, info_asymm) %>% 
+  gather("metric", "value", -motif, -tss_asymm_ratio) %>% 
+  mutate(metric = factor(metric, labels = c("Chromatin information\nasymmetry",
+                                            "Median TSS distance"))) %>% 
+  group_by(metric) %>% 
+  mutate(scaled = scale(value)) %>% 
+  ggplot(aes(x = scaled, y = tss_asymm_ratio)) + 
+  geom_hline(yintercept = 0, lty = 2, color = "gray") +
+  geom_vline(xintercept = 0, lty = 2, color = "gray") +
+  geom_point(alpha = .25) +
+  geom_smooth(method = "lm", se = F, color = "black", lty = 2) +
+  facet_wrap(~ metric, scales = "free_x") +
+  labs(x = "Value (scaled)", y = "Motif-oriented\nTSS-proximity bias (log2)") +
+  theme(strip.background = element_blank())
+  
+summary(lm(scale(tss_asymm_ratio) ~ scale(tss_dist_iqr) * scale(median_tss_dist) + scale(info_asymm), d_plot_sig))
+summary(lm(scale(tss_asymm_ratio) ~ scale(median_tss_dist) + scale(info_asymm), d_plot_sig))
+```
+
+# TSS asymmetry proximal vs distal
+```{r}
+# vplot_dir <- file.path("work/f-vices_1KG/vplot_asymmetry_cage10", my_sample, "vplots")
+# side_info_distal <- lapply(asymm$motif, function(motif) {
+#   file.path(vplot_dir, sprintf("%s.distal.posinfo.gz", motif)) %>%
+#     read.table(header = T) %>%
+#     mutate(side = case_when(position < 0 ~ "left",
+#                             position > 0 ~ "right",
+#                             T ~ "center")) %>%
+#     filter(side != "center") %>%
+#     filter(all_normalized > 0) %>%
+#     group_by(side) %>%
+#     summarise(info = sum(all_normalized)) %>%
+#     mutate(motif = motif) %>%
+#     spread(side, info) %>%
+#     mutate(distance = "distal")
+# }) %>%
+#   bind_rows() %>%
+#   mutate(side = case_when(left > right ~ "left", T ~ "right"))
+# 
+# side_info_prox <- lapply(asymm$motif, function(motif) {
+#   file.path(vplot_dir, sprintf("%s.proximal.posinfo.gz", motif)) %>%
+#     read.table(header = T) %>%
+#     mutate(side = case_when(position < 0 ~ "left",
+#                             position > 0 ~ "right",
+#                             T ~ "center")) %>%
+#     filter(side != "center") %>%
+#     filter(all_normalized > 0) %>%
+#     group_by(side) %>%
+#     summarise(info = sum(all_normalized)) %>%
+#     mutate(motif = motif) %>%
+#     spread(side, info) %>%
+#     mutate(distance = "proximal")
+# }) %>%
+#   bind_rows() %>%
+#   mutate(side = case_when(left > right ~ "left", T ~ "right"))
+# 
+# side_info_prox_dist <- bind_rows(side_info_prox, side_info_distal)
+# rm(side_info_prox, side_info_distal)
+# 
+# save(side_info_prox_dist,
+#      file = sprintf("work/f-vices_1KG/vplot_asymmetry_cage10/sides_prox_dista_%s.RData", my_sample))
+
+load(sprintf("../data/processed/asymmetry/sides_prox_dista_%s.RData", my_sample))
+
+# tss_dir <- file.path("work/f-vices_1KG/vplot_asymmetry_cage10", my_sample)
+# tss_info_prox <- asymm %>% 
+#   pull(motif) %>% 
+#   lapply(function(motif) {
+#     tss <- file.path(tss_dir, sprintf("%s.bound.nearest_tss.proximal.bed", motif)) %>% 
+#       data.table::fread(sep = "\t", data.table = F) %>% 
+#       rename(type = V12, dist = V13) %>% 
+#       filter(dist !=0) %>% 
+#       mutate(motif = motif) %>% 
+#       group_by(motif, type) %>% 
+#       summarise(n = n(),
+#                 left = sum(dist < 0),
+#                 right = sum(dist > 0)) %>% 
+#       mutate(distance = "proximal")
+#   }) %>% 
+#   bind_rows()
+#   
+# tss_info_dist <- asymm %>% 
+#   pull(motif) %>% 
+#   lapply(function(motif) {
+#     tss <- file.path(tss_dir, sprintf("%s.bound.nearest_tss.distal.bed", motif)) %>% 
+#       data.table::fread(sep = "\t", data.table = F) %>% 
+#       rename(type = V12, dist = V13) %>% 
+#       filter(dist !=0) %>% 
+#       mutate(motif = motif) %>% 
+#       group_by(motif, type) %>% 
+#       summarise(n = n(),
+#                 left = sum(dist < 0),
+#                 right = sum(dist > 0)) %>% 
+#       mutate(distance = "distal")
+#   }) %>% 
+#   bind_rows()
+# 
+# tss_prox_dist <- bind_rows(tss_info_prox, tss_info_dist) %>% 
+#   filter(type == "protein_coding") %>% 
+#   mutate(tss_asymm = right - left) %>% 
+#   mutate(tss_asymm_ratio = log2(right / left)) %>% 
+#   left_join(side_info_prox_dist, by = c("motif", "distance")) %>% 
+#   left_join(select(asymm, motif, sig), by = "motif")
+# # rm(tss_info_prox, tss_info_dist)
+# 
+# save(tss_prox_dist, 
+#      file = sprintf("work/f-vices_1KG/vplot_asymmetry_cage10/info_prox_distal_%s.RData", my_sample))
+load(sprintf("../data/processed/asymmetry/info_prox_distal_%s.RData", my_sample))
+
+side_info_prox_dist <- side_info_prox_dist %>% 
+  mutate(info_asymm = right - left) %>% 
+  mutate(info_asymm_ratio = log2(right / left))
+
+```
+
+```{r, fig.width=5.5, fig.height=3}
+side_info_wide <- side_info_prox_dist %>% 
+  select(motif, info_asymm, distance) %>% 
+  spread(distance, info_asymm) %>% 
+  left_join(select(asymm, motif, sig), by = "motif") %>% 
+  mutate(sig2 = case_when(sig ~ "Significant", T ~ "Non-significant"))
+
+lim <- side_info_prox_dist %>% 
+  pull(info_asymm) %>% 
+  abs() %>% 
+  max()
+
+side_info_wide %>% 
+  ggplot(aes(x = proximal, y = distal)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = 0, lty = 2) +
+  geom_smooth(method = "lm", se = F, lty = 2, color = "black") +
+  geom_point(alpha= .5) +
+  facet_wrap(~ sig2) +
+  labs(x = "Information asymmetry (log2)\nTSS-proximal instances",
+       y = "Information asymmetry(log2)\nTSS-distal instances") 
+
+side_info_wide %>% 
+  mutate(agree = sign(distal) == sign(proximal)) %>% 
+  group_by(sig2) %>% 
+  summarise(n = n(), agree = sum(agree),
+            frac = agree / n)
+```
+
+```{r, fig.width=3.3, fig.height=3}
+d_plot_sig <- tss_prox_dist %>% 
+  filter(sig)
+
+d_plot_sig %>% 
+  filter(distance == "proximal") %>% 
+  ggplot(aes(x = info_asymm, y = tss_asymm_ratio)) +
+  geom_hline(yintercept = 0, lty = 2) +
+  geom_vline(xintercept = 0, lty = 2) +
+  geom_point() +
+  geom_smooth(method = "lm", se = F, lty = 2, color = "black") +
+  scale_x_continuous(breaks = seq(-10, 10, 2)) +
+  scale_y_continuous(breaks = seq(-4, 4, .25)) +
+  labs(x = "Information asymmetry", y = "Neares TSS direction bias (log2)") +
+  theme(panel.grid.minor = element_blank())
+
+with(filter(d_plot_sig, distance == "proximal"), 
+     cor.test(info_asymm, tss_asymm_ratio, method = "s"))
+with(filter(d_plot_sig, distance == "distal"), 
+     cor.test(info_asymm, tss_asymm_ratio, method = "s"))
+```
+
+```{r, fig.width=4.5, fig.height=3}
+# obs2 <- d_plot_sig %>% 
+#   filter(distance == "proximal") %>% 
+#   mutate(q = case_when(info_asymm > 0 & tss_asymm > 0 ~ "q2",
+#                    info_asymm < 0 & tss_asymm < 0 ~ "q4",
+#                    info_asymm > 0 & tss_asymm < 0 ~ "q3",
+#                    info_asymm < 0 & tss_asymm > 0 ~ "q1")) %>% 
+#   filter(!is.na(q)) %>% 
+#   group_by(q) %>% 
+#   summarise(n_obs = n())
+
+# permut2 <- parallel::mclapply(1:10000, function(i) {
+#   d_plot_sig %>%
+#     filter(distance == "proximal") %>%
+#     mutate(tss_asymm = tss_asymm * sample(c(-1,1), n(), replace = T)) %>%
+#     mutate(info_asymm = info_asymm * sample(c(-1,1), n(), replace = T)) %>%
+#     mutate(q = case_when(info_asymm > 0 & tss_asymm > 0 ~ "q2",
+#                          info_asymm < 0 & tss_asymm < 0 ~ "q4",
+#                          info_asymm > 0 & tss_asymm < 0 ~ "q3",
+#                          info_asymm < 0 & tss_asymm > 0 ~ "q1")) %>%
+#     filter(!is.na(q)) %>%
+#     group_by(q) %>%
+#     summarise(n = n()) %>%
+#     mutate(i = i)
+#   }, mc.cores = 30) %>%
+#   bind_rows() %>%
+#   left_join(obs2, by = "q") %>%
+#   group_by(q) %>%
+#   summarise(obs = unique(n_obs),
+#             n_higher = sum(n_obs > n),
+#             n_lower = sum(n_obs < n),
+#             mean = mean(n),
+#             median = median(n),
+#             n_permut = n())
+# 
+#
+# d_plot <- permut2 %>% 
+#   mutate(emp_p = case_when(obs > median ~ 1 / n_higher * 2,
+#                            obs < median ~ 1 / n_lower * 2)) %>% 
+#   mutate(log2 = log2(obs / median)) %>% 
+#   mutate(info = case_when(q %in% c("q2", "q3") ~ "Downstream", T ~ "Upstream")) %>% 
+#   mutate(tss = case_when(q %in% c("q1", "q2") ~ "Downstream", T ~ "Upstream")) %>% 
+#   mutate(info = factor(info, levels = c("Upstream", "Downstream"), ordered = T)) %>% 
+#   mutate(tss = factor(tss, levels = c("Upstream", "Downstream"), ordered = T))
+# 
+# col_lim <- max(abs(d_plot$log2))
+# cols <- rev(brewer.pal(5, "RdBu"))
+# cols[3] <- "white"
+# cols[4:5] <- rev(brewer.pal(11, "RdBu"))[10:11]
+# ggplot(d_plot, aes(x = info, y = tss, fill = log2)) +
+#   geom_tile() +
+#   scale_fill_gradientn(colors = cols, lim = c(-col_lim, col_lim)) +
+#   scale_x_discrete(expand = c(0,0)) +
+#   scale_y_discrete(expand = c(0,0)) +
+#   labs(x = "Information asymmetry direction", y = "TSS bias direction",
+#        fill = "Enrichment\n(log2)") +
+#   theme(panel.grid = element_blank(),
+#         panel.border = element_blank(),
+#         axis.ticks = element_blank())
 ```
