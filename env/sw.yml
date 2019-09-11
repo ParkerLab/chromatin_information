@@ -1,0 +1,11 @@
+# Software
+channels:
+    - conda-forge
+    - bioconda
+    - r
+    - defaults
+dependencies:
+    - samtools=1.9
+    - bedtools=2.26.0
+    - snakemake=5.5.0
+    # - bioconda-rgt=0.12.1

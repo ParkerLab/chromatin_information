@@ -1,0 +1,12 @@
+ # ngsplot R dependencies
+channels:
+    - conda-forge
+    - bioconda
+    - r
+    - defaults
+dependencies:
+    - r-caTools=1.17.1.1
+    - r-doMC=1.3.5
+    - bioconductor-Rsamtools=1.34.0
+    - bioconductor-BSgenome=1.50.0
+    - bioconductor-shortread=1.40.0

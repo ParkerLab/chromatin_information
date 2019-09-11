@@ -6,9 +6,6 @@ Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Pet
 ## To-do
 - [ ] Auxiliary scripts
     - [ ] conda environment
-    - [ ] install_dependencies.R
-    - [ ] download_fastq.sh
-    - [ ] download_processed_files.sh
 
 ## Description
 This repository will allow you to generate all the main figures from our manuscript.

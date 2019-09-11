@@ -1,0 +1,9 @@
+# python packages
+channels:
+    - conda-forge
+    - bioconda
+    - r
+    - defaults
+dependencies:
+    - pysam=0.10.0
+    # - atactk=0.1.9

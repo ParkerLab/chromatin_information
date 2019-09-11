@@ -1,0 +1,12 @@
+name: 
+    chromatin_information
+channels:
+    - conda-forge
+    - bioconda
+    - r
+    - defaults
+dependencies:
+    # main
+    - python=3.5.3
+    - r=3.5.1
+   
