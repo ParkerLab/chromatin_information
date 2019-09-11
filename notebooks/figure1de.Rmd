@@ -23,6 +23,7 @@ library(scales)
 
 # knitr::opts_knit$set(root.dir = "PLACEHOLDER")
 knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+# knitr::opts_chunk$set(dev = "cairo_pdf")  # output figures as pdf
 
 theme_set(theme_bw(base_size = 12))
 ```
@@ -49,7 +50,6 @@ d <- "../data/processed/tf-binding/gm12878/f1_data.%s.txt" %>%
   filter(total_true_positives == max(total_true_positives))
 
 exps_to_keep <- unique(d$experiment)
-# save(exps_to_keep, file = "../data/processed/tf-binding/gm12878/exps_to_keep.RData")
 
 fvices <- "../data/processed/tf-binding/gm12878/chip_seq_fvices.%s.txt" %>% 
   sprintf(sample) %>% 
@@ -77,24 +77,23 @@ d_all <- d %>% left_join(fvices, by = c("factor", "motif", "experiment")) %>%
          group_f = factor(group3, levels = 1:3, ordered = T))
 ```
 
-## f-VICE distribution
-```{r, fig.width=2, fig.height=6, fig.show='hold'}
-# dir.create("plots/tf-binding/f-vices", showWarnings = F)
+## 1D
+```{r, fig.width=2, fig.height=6}
 # f-VICE rank
 p <- fvices %>% 
-    mutate(factor_f = factor(factor, levels = rev(ord_factors), ordered = T)) %>% 
-    ggplot(aes(x = factor_f, y = norm_ctcf, group = 1)) + 
-    geom_line() + 
-    geom_point(size = 3) +
-    labs(x = NULL, y = "f-VICE", color = "f-VICE quintile") +
-    scale_y_continuous(breaks = seq(0,1,.5)) +
-    coord_flip() +
-    theme(panel.grid.minor.x = element_blank(),
-          panel.grid.major.y = element_blank())
+  mutate(factor_f = factor(factor, levels = rev(ord_factors), ordered = T)) %>% 
+  ggplot(aes(x = factor_f, y = norm_ctcf, group = 1)) + 
+  geom_line() + 
+  geom_point(size = 3) +
+  labs(x = NULL, y = "f-VICE", color = "f-VICE quintile") +
+  scale_y_continuous(breaks = seq(0,1,.5)) +
+  coord_flip() +
+  theme(panel.grid.minor.x = element_blank(),
+        panel.grid.major.y = element_blank())
 plot(p)
 ```
 
-## Summary bar plots
+## 1E
 ```{r, fig.height=4, fig.width=4}
 make_summary <- function(depth_to_keep){
   d_summary2 <- d_all %>%
@@ -150,4 +149,813 @@ d_all %>%
   group_by(method) %>% 
   summarise(total_f1 = sum(f1)) %>% 
   arrange(-total_f1)
+```
+
+```{r}
+methods_ord <- c("WithinPeaks", "Peaks_log10", "BMO","CENTIPEDE", 'DNase2TF', "HINT", 
+                 "CENTIPEDE_sb", "ssCENTIPEDE")
+methods_lab <- c("ATAC-seq peaks", "ATAC-seq peaks", "BMO","CENTIPEDE", 'DNase2TF', "HINT", 
+                 "ssCENTIPEDE", "ssCENTIPEDE")
+
+
+get_prauc <- function(sample){
+  infile <- "../data/processed/tf-binding/gm12878/prauc_data.%s.txt" %>% 
+    sprintf(sample)
+  prauc <- read.table(infile, header = T) %>% 
+    separate(factor, into = c("factor", "motif", "experiment"), sep = "__") %>% 
+    filter(experiment %in% exps_to_keep) %>% 
+    rename(ssCENTIPEDE = CENTIPEDE_sb)
+  return(prauc)
+}
+
+get_f1 <- function(sample){
+  infile <- "../data/processed/tf-binding/gm12878/f1_data.%s.txt" %>% 
+    sprintf(sample)
+  f1 <- read.table(infile, header = T) %>% 
+    separate(factor, into = c("factor", "motif", "experiment"), sep = "__") %>% 
+    select(-precision, -recall) %>%
+    rename(metric = f1) %>%
+    mutate(metric = case_when(is.na(metric) ~ 0, T ~ metric)) %>% 
+    mutate(method = gsub("CENTIPEDE_sb", "ssCENTIPEDE", method)) %>% 
+    spread(method, metric) %>%
+    filter(experiment %in% exps_to_keep)
+  return(f1)
+}
+
+get_ppv <- function(sample){
+  infile <- "../data/processed/tf-binding/gm12878/f1_data.%s.txt" %>% 
+    sprintf(sample)
+  ppv <- read.table(infile, header = T) %>% 
+    separate(factor, into = c("factor", "motif", "experiment"), sep = "__") %>% 
+    select(-f1, -recall) %>% 
+    rename(metric = precision) %>%
+    mutate(metric = case_when(is.na(metric) ~ 0, T ~ metric)) %>% 
+    mutate(method = gsub("CENTIPEDE_sb", "ssCENTIPEDE", method)) %>% 
+    spread(method, metric) %>%
+    filter(experiment %in% exps_to_keep)
+  return(ppv)
+}
+
+make_fig1 <- function(prauc){
+  maxdepth <- max(prauc$depth)
+  prauc_long <- prauc %>% 
+    gather("method", "prauc", CENTIPEDE:Peaks_log10) %>% 
+    mutate(method = factor(method, levels = methods_ord, 
+                           labels = methods_lab, ordered = T)) %>% 
+    filter(depth == maxdepth)
+  
+  counts <- prauc_long %>% 
+    mutate(bmo_better = BMO > prauc) %>% 
+    group_by(method) %>% 
+    summarize(exps = length(factor),
+              bmo_better = sum(bmo_better)) %>% 
+    mutate(bmo_better_frac = bmo_better / exps) %>% 
+    select(method, bmo_better_frac) %>% 
+    group_by(method) %>% 
+    summarise(total = length(bmo_better_frac), bmo_better = sum(bmo_better_frac)) %>% 
+    mutate(frac = round(bmo_better / total, 3))
+  print(counts)
+  
+  max_coord <- max(c(prauc_long$BMO, prauc_long$prauc))
+  p <- ggplot(prauc_long, aes(x = prauc, y = BMO, color = factor, shape = factor)) +
+    geom_abline() +
+    geom_point(size = 2, alpha = .5) +
+    facet_wrap(~ method) +
+    scale_shape_manual(values = c(rep(15,11), rep(16,11), rep(17,11), rep(18,11))) +
+    scale_color_manual(values = c(brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"))) +
+    scale_x_continuous(limits = c(0, max_coord), breaks = seq(0, 1, .4)) +
+    scale_y_continuous(limits = c(0, max_coord), breaks = seq(0, 1, .4)) +
+    labs(x = "Other method AUC-PR", y = "BMO AUC-PR", color = "TF", shape = "TF") +
+    theme(strip.background = element_blank(),
+          panel.grid.minor = element_blank())
+  plot(p)
+}
+
+make_fig1.1 <- function(d, metric_name, plot = T){
+    maxdepth <- max(d$depth)
+    d_long <- d %>% 
+        gather("method", "value", CENTIPEDE:WithinPeaks, -Peaks_log10) %>% 
+        mutate(method = factor(method, levels = methods_ord, 
+                               labels = methods_lab, ordered = T)) %>% 
+        filter(depth == maxdepth)
+    
+    counts <- d_long %>% 
+        mutate(bmo_better = BMO > value) %>% 
+        group_by(method, factor) %>% 
+        summarize(exps = length(factor),
+                  bmo_better = sum(bmo_better)) %>% 
+        mutate(bmo_better_frac = bmo_better / exps) %>% 
+        select(method, bmo_better_frac) %>% 
+        group_by(method) %>% 
+        summarise(total = length(bmo_better_frac), bmo_better = sum(bmo_better_frac)) %>% 
+        mutate(frac = round(bmo_better / total, 3))
+    print(counts)
+    
+    max_coord <- max(c(d_long$BMO, d_long$value))
+    p <- ggplot(d_long, aes(x = value, y = BMO, color = factor, shape = factor)) +
+    # p <- ggplot(d_long, aes(x = value, y = BMO)) +
+        geom_abline() +
+        geom_point(size = 2, alpha = .5) +
+        facet_wrap(~ method) +
+        scale_shape_manual(values = c(rep(15,11), rep(16,11), rep(17,11), rep(18,11))) +
+        scale_color_manual(values = c(brewer.pal(11, "Paired"),
+                                      brewer.pal(11, "Paired"),
+                                      brewer.pal(11, "Paired"),
+                                      brewer.pal(11, "Paired"))) +
+        scale_x_continuous(limits = c(0, max_coord), breaks = seq(0, 1, .4)) +
+        scale_y_continuous(limits = c(0, max_coord), breaks = seq(0, 1, .4)) +
+        labs(x = sprintf("Other method %s", metric_name), 
+             y = sprintf("BMO %s", metric_name), color = "TF", shape = "TF") +
+        theme(strip.background = element_blank())
+    if(plot) {
+      plot(p)  
+    } else {
+      return(p)
+    }
+}
+
+
+make_fig2 <- function(prauc){
+  max_coord <- max(c(prauc$BMO, prauc$prauc))
+  p <- prauc %>% 
+    gather("method", "prauc", CENTIPEDE, DNase2TF, HINT, Peaks_log10, ssCENTIPEDE) %>% 
+    mutate(method = gsub("Peaks_log10", "ATAC-seq peaks", method)) %>% 
+    ggplot(aes(x = prauc, y = BMO, color = factor, shape = factor)) +
+    # ggplot(aes(x = prauc, y = BMO)) +
+    geom_abline() +
+    geom_point(size = 2, alpha = .5) +
+    facet_grid(method ~ depth) +
+    scale_shape_manual(values = c(rep(15,11), rep(16,11), rep(17,11), rep(18,11))) +
+    scale_color_manual(values = c(brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"))) +
+    scale_x_continuous(breaks = seq(0, 1, .4)) +
+    scale_y_continuous(breaks = seq(0, 1, .4)) +
+    labs(x = "Other method AUC-PR", y = "BMO AUC-PR", color = "TF", shape = "TF",
+         title = sample) +
+    theme(strip.background = element_blank())
+  plot(p)
+}
+
+make_barplots <- function(prauc, fvices) {
+  d_plot <- prauc %>% 
+    filter(depth == max(depth)) %>% 
+    gather("method", "prauc", BMO:Peaks_log10) %>% 
+    mutate(method = factor(method, levels = methods_ord, 
+                           labels = methods_lab, ordered = T)) %>% 
+    group_by(method, group_f) %>% 
+    summarise(total_prauc = sum(prauc)) %>% 
+    ungroup()
+  
+  ord_methods <- d_plot %>% 
+    group_by(method) %>% 
+    summarise(x = sum(total_prauc)) %>% 
+    arrange(-x) %>% 
+    pull(method)
+  
+  d_plot <- d_plot %>% 
+    mutate(method = factor(method, levels = ord_methods, ordered = T)) %>% 
+    mutate(y_label = case_when(group_f == 3 ~ 1, group_f == 2 ~ 3, T ~ 6))
+  
+  p <- ggplot(d_plot, aes(x = method, y = total_prauc, fill = group_f)) +
+    geom_col() +
+    geom_text(aes(x = method, y = y_label, label = round(total_prauc, 1))) +
+    scale_fill_brewer(palette = 'Greys', direction = 1) +
+    labs(x = "TF binding prediction method", y = "Total AUC-PR", 
+         fill = "f-VICE tertile", title = sample) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank())
+  plot(p)
+}
+
+```
+
+
+# Other samples {.tabset}
+## Parker GM12878
+### prAUC
+```{r, fig.width=7, fig.height=3.5}
+sample <- "lab_gm12878"
+
+fvices <- read.table(sprintf("../data/processed/tf-binding/gm12878/chip_seq_fvices.%s.txt", sample),
+                      header = T, sep = "\t") %>% 
+  separate(motif, into = c("factor", "motif", "experiment"), sep = "__") %>% 
+  mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual) %>% 
+  filter(experiment %in% exps_to_keep) %>% 
+  select(c('factor', 'motif','experiment','pchart')) %>% 
+  mutate(group3  = ntile(pchart, 3),
+         norm_ctcf = pchart / pchart[factor == 'CTCF'])
+
+prauc <- get_prauc(sample) %>% 
+  left_join(fvices, by = c("factor", "motif", "experiment")) %>% 
+  mutate(group_f = factor(group3, levels = 1:3, ordered = T))
+
+make_fig1(prauc)
+```
+
+```{r}
+make_barplots(prauc, fvices)
+```
+
+```{r, fig.width=7, fig.height=3.5}
+f1 <- get_f1(sample)
+make_fig1.1(f1, "F1")
+
+ppv <- get_ppv(sample)
+make_fig1.1(ppv, "PPV")
+```
+
+```{r, fig.width=4, fig.height=4}
+prauc %>% 
+  filter(depth == max(depth)) %>% 
+  ggplot(aes(x = CENTIPEDE, y = ssCENTIPEDE)) +
+  geom_abline() +
+  geom_point() + 
+  labs(x = "CENTIPEDE AUC-PR",
+       y = "ssCENTIPEDE AUC-PR",
+       
+       title = sample)
+
+f1 %>% 
+  filter(depth == max(depth)) %>% 
+  ggplot(aes(x = CENTIPEDE, y = ssCENTIPEDE)) +
+  geom_abline() +
+  geom_point() +
+  labs(x = "CENTIPEDE F1",
+       y = "ssCENTIPEDE F1",
+       title = sample)
+```
+
+```{r, fig.width=7, fig.height=5}
+make_fig2(prauc)
+```
+
+## Buenrostro GM12878
+### prAUC
+```{r, fig.width=7, fig.height=3.5}
+sample <- "buenrostro_rep1"
+
+fvices <- read.table(sprintf("../data/processed/tf-binding/gm12878/chip_seq_fvices.%s.txt", sample),
+                      header = T, sep = "\t") %>% 
+  separate(motif, into = c("factor", "motif", "experiment"), sep = "__") %>% 
+  mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual) %>% 
+  filter(experiment %in% exps_to_keep) %>% 
+  select(c('factor', 'motif','experiment','pchart')) %>% 
+  mutate(group3  = ntile(pchart, 3),
+         norm_ctcf = pchart / pchart[factor == 'CTCF'])
+
+prauc <- get_prauc(sample) %>% 
+  left_join(fvices, by = c("factor", "motif", "experiment")) %>% 
+  mutate(group_f = factor(group3, levels = 1:3, ordered = T))
+
+make_fig1(prauc)
+```
+
+```{r}
+make_barplots(prauc, fvices)
+```
+
+```{r, fig.width=7, fig.height=3.5}
+f1 <- get_f1(sample)
+make_fig1.1(f1, "F1")
+
+ppv <- get_ppv(sample)
+make_fig1.1(ppv, "PPV")
+```
+
+```{r, fig.width=4, fig.height=4}
+prauc %>% 
+  filter(depth == max(depth)) %>% 
+  ggplot(aes(x = CENTIPEDE, y = ssCENTIPEDE)) +
+  geom_abline() +
+  geom_point() + 
+  labs(x = "CENTIPEDE AUC-PR",
+       y = "ssCENTIPEDE AUC-PR",
+       
+       title = sample)
+
+f1 %>% 
+  filter(depth == max(depth)) %>% 
+  ggplot(aes(x = CENTIPEDE, y = ssCENTIPEDE)) +
+  geom_abline() +
+  geom_point() +
+  labs(x = "CENTIPEDE F1",
+       y = "ssCENTIPEDE F1",
+       title = sample)
+```
+
+```{r, fig.width=12, fig.height=5}
+make_fig2(prauc)
+```
+
+## HepG2 1
+```{r}
+get_prauc <- function(sample){
+  infile <- "../data/processed/tf-binding/hepg2/prauc_data.%s.txt" %>% 
+    sprintf(sample)
+  prauc <- read.table(infile, header = T) %>% 
+    separate(factor, into = c("experiment", "factor", "motif"), sep = "__") %>% 
+    filter(experiment %in% exps_to_keep) %>% 
+    rename(ssCENTIPEDE = CENTIPEDE_sb)
+  return(prauc)
+}
+
+get_f1 <- function(sample){
+  infile <- "../data/processed/tf-binding/hepg2/f1_data.%s.txt" %>% 
+    sprintf(sample)
+  f1 <- read.table(infile, header = T) %>% 
+    separate(factor, into = c("experiment", "factor", "motif"), sep = "__") %>% 
+    select(-precision, -recall) %>%
+    mutate(f1 = case_when(is.na(f1) ~ 0, T ~ f1)) %>% 
+    mutate(method = gsub("CENTIPEDE_sb", "ssCENTIPEDE", method)) %>% 
+    spread(method, f1) %>% 
+    filter(experiment %in% exps_to_keep)
+  return(f1)
+}
+
+get_ppv <- function(sample){
+  infile <- "../data/processed/tf-binding/hepg2/f1_data.%s.txt" %>% 
+    sprintf(sample)
+  f1 <- read.table(infile, header = T) %>% 
+    separate(factor, into = c("experiment", "factor", "motif"), sep = "__") %>% 
+    select(-f1, -recall) %>% rename(f1 = precision) %>%
+    mutate(f1 = case_when(is.na(f1) ~ 0, T ~ f1)) %>% 
+    mutate(method = gsub("CENTIPEDE_sb", "ssCENTIPEDE", method)) %>% 
+    spread(method, f1) %>% 
+    filter(experiment %in% exps_to_keep)
+  return(f1)
+}
+
+make_fig1 <- function(prauc, metric = "prAUC"){
+  maxdepth <- max(prauc$depth)
+  prauc_long <- prauc %>% 
+    gather("method", "prauc", CENTIPEDE:Peaks_log10) %>% 
+    mutate(method = gsub("CENTIPEDE_sb", "ssCENTIPEDE", method)) %>% 
+    mutate(method = gsub("Peaks_log10", "ATAC-seq peaks", method)) %>% 
+    filter(depth == maxdepth)
+  
+  counts <- prauc_long %>% 
+    mutate(bmo_better = BMO > prauc) %>% 
+    group_by(method, factor) %>% 
+    summarize(exps = length(factor),
+              bmo_better = sum(bmo_better)) %>% 
+    mutate(bmo_better_frac = bmo_better / exps) %>% 
+    select(method, bmo_better_frac) %>% 
+    group_by(method) %>% 
+    summarise(total = length(bmo_better_frac), bmo_better = sum(bmo_better_frac)) %>% 
+    mutate(frac = round(bmo_better / total, 3))
+  print(counts)
+  
+  max_coord <- max(c(prauc_long$BMO, prauc_long$prauc))
+  p <- ggplot(prauc_long, aes(x = prauc, y = BMO, color = factor, shape = factor)) +
+    geom_abline() +
+    geom_point(size = 2, alpha = .5) +
+    facet_wrap(~ method) +
+    scale_x_continuous(limits = c(0, max_coord)) +
+    scale_y_continuous(limits = c(0, max_coord)) +
+    scale_shape_manual(values = c(rep(15,11), rep(16,11), rep(17,11), 
+                                  rep(18,11), rep(19,11), rep(20,11))) +
+    scale_color_manual(values = c(brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"))) +
+    labs(x = sprintf("Other method %s",metric), y = sprintf("BMO %s",metric), 
+         color = "TF", shape = "TF") +
+    theme(strip.background = element_blank(),
+          panel.grid.minor = element_blank())
+  plot(p)
+}
+
+make_fig1.1 <- function(f1, metric = "F1", plot = T){
+  maxdepth <- max(f1$depth)
+  f1_long <- f1 %>% 
+    gather("method", "f1", CENTIPEDE, DNase2TF, HINT, ssCENTIPEDE, WithinPeaks) %>% 
+    mutate(method = gsub("CENTIPEDE_sb", "ssCENTIPEDE", method)) %>% 
+    mutate(method = gsub("WithinPeaks", "ATAC-seq peaks", method)) %>% 
+    filter(depth == maxdepth)
+  
+  counts <- f1_long %>% 
+    mutate(bmo_better = BMO > f1) %>% 
+    group_by(method, factor) %>% 
+    summarize(exps = length(factor),
+              bmo_better = sum(bmo_better)) %>% 
+    mutate(bmo_better_frac = bmo_better / exps) %>% 
+    select(method, bmo_better_frac) %>% 
+    group_by(method) %>% 
+    summarise(total = length(bmo_better_frac), bmo_better = sum(bmo_better_frac)) %>% 
+    mutate(frac = round(bmo_better / total, 3))
+  print(counts)
+  
+  max_coord <- max(c(f1_long$BMO, f1_long$f1))
+  p <- ggplot(f1_long, aes(x = f1, y = BMO, color = factor, shape = factor)) +
+    geom_abline() +
+    geom_point(size = 2, alpha = .5) +
+    facet_wrap(~ method) +
+    scale_x_continuous(limits = c(0, max_coord), breaks = seq(0, 1, .4)) +
+    scale_y_continuous(limits = c(0, max_coord), breaks = seq(0, 1, .4)) +
+    scale_shape_manual(values = c(rep(15,11), rep(16,11), rep(17,11), 
+                                  rep(18,11), rep(19,11), rep(20,11))) +
+    scale_color_manual(values = c(brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"))) +
+    labs(x = sprintf("Other method %s",metric), y = sprintf("BMO %s",metric), 
+         color = "TF", shape = "TF") +
+    theme(strip.background = element_blank())
+  if(plot) {
+    plot(p)  
+  } else {
+    return(p)
+  }
+}
+
+
+make_fig2 <- function(prauc){
+    max_coord <- max(c(prauc$BMO, prauc$prauc))
+    p <- prauc %>% 
+        gather("method", "prauc", CENTIPEDE, DNase2TF, HINT, Peaks_log10, ssCENTIPEDE) %>% 
+        mutate(method = gsub("Peaks_log10", "ATAC-seq peaks", method)) %>% 
+        ggplot(aes(x = prauc, y = BMO, color = factor, shape = factor)) +
+        geom_abline() +
+        geom_point(size = 2, alpha = .5) +
+        facet_grid(method ~ depth) +
+        scale_shape_manual(values = c(rep(15,11), rep(16,11), rep(17,11), 
+                                  rep(18,11), rep(19,11), rep(20,11))) +
+        scale_color_manual(values = c(brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"),
+                                  brewer.pal(11, "Paired"))) +
+        scale_x_continuous(breaks = seq(0, 1, .4)) +
+        scale_y_continuous(breaks = seq(0, 1, .4)) +
+        labs(x = "Other method AUC-PR", y = "BMO AUC-PR", color = "TF", shape = "TF",
+             title = sample) +
+        theme(strip.background = element_blank())
+    plot(p)
+}
+
+make_barplots <- function(prauc, fvices) {
+  d_plot <- prauc %>% 
+    filter(depth == max(depth)) %>% 
+    gather("method", "prauc", BMO:Peaks_log10) %>% 
+    mutate(method = gsub("CENTIPEDE_sb", "ssCENTIPEDE", method)) %>% 
+    mutate(method = gsub("WithinPeaks", "ATAC-seq peaks", method)) %>% 
+    group_by(method, group_f) %>% 
+    summarise(total_prauc = sum(prauc)) %>% 
+    ungroup()
+  
+  ord_methods <- d_plot %>% 
+    group_by(method) %>% 
+    summarise(x = sum(total_prauc)) %>% 
+    arrange(-x) %>% 
+    pull(method)
+
+  d_plot <- d_plot %>% 
+    mutate(method = factor(method, levels = ord_methods, ordered = T)) %>% 
+    mutate(y_label = case_when(group_f == 3 ~ 1, group_f == 2 ~ 3, T ~ 6))
+  
+  p <- ggplot(d_plot, aes(x = method, y = total_prauc, fill = group_f)) +
+    geom_col() +
+    geom_text(aes(x = method, y = y_label, label = round(total_prauc, 1))) +
+    scale_fill_brewer(palette = 'Greys', direction = 1) +
+    labs(x = "TF binding prediction method", y = "Total prAUC", 
+        fill = "f-VICE group", title = sample) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.y = element_blank())
+  plot(p)
+}
+```
+
+
+```{r, fig.width=4, fig.height=4}
+sample <- "hepg2_3"
+methods_to_keep <- rev(c("BMO","CENTIPEDE", 'DNase2TF', "HINT", "CENTIPEDE_sb", 
+                         "ATAC-seq peaks"))
+
+# Read data
+d <- "../data/processed/tf-binding/hepg2/f1_data.%s.txt" %>% 
+  sprintf(sample) %>% 
+  read.table(header = T, sep = "\t", stringsAsFactors = F) %>% 
+  separate(factor, into = c("experiment", "factor", "motif"), sep = "__") %>% 
+  mutate(method = gsub('WithinPeaks', 'ATAC-seq peaks', method)) %>% 
+  select(c("factor", "motif", "method", "f1", 
+           "depth", "experiment", "total_true_positives")) %>% 
+  filter(method %in% methods_to_keep) %>% 
+  mutate(f1 = case_when(is.na(f1) ~ 0,
+                        TRUE ~ f1))
+
+
+# Keep experiment with highest counts (need at least 1000 bound motifs)
+d <- d %>% 
+  filter(total_true_positives >= 1000) %>% 
+  group_by(factor,motif) %>% 
+  filter(total_true_positives == max(total_true_positives))
+
+exps_to_keep <- unique(d$experiment)
+
+fvices <- read.table(sprintf("../data/processed/tf-binding/hepg2/%s.fvice.chip.out", sample),
+                      header = T, sep = "\t") %>% 
+  separate(motif, into = c("experiment", "factor", "motif"), sep = "__")
+
+fvices <- fvices %>% 
+  filter(experiment %in% exps_to_keep) %>% 
+  select(c('factor', 'motif','experiment','pchart')) %>% 
+  mutate(group10 = ntile(pchart, 10),
+         group5  = ntile(pchart, 5),
+         group4  = ntile(pchart, 4),
+         group3  = ntile(pchart, 3),
+         group2  = ntile(pchart, 2),
+         norm_ctcf = pchart / pchart[factor == 'CTCF'])
+
+ord_factors <- fvices$factor[order(fvices$pchart)]
+
+fvices$factor_f <- factor(fvices$factor, levels = ord_factors, ordered = T)
+fvices$group_f  <- factor(fvices$group3, levels = 1:3, ordered = T)
+
+
+d_all <- d %>% left_join(fvices)
+
+d_all <- d_all %>% 
+  mutate(method_f = factor(method, methods_to_keep, ordered = T),
+         factor_f = factor(factor, levels = ord_factors, ordered = T),
+         group_f = factor(group3, levels = 1:3, ordered = T))
+
+make_summary <- function(depth_to_keep){
+  d_summary2 <- d_all %>%
+    filter(depth == depth_to_keep) %>% 
+    group_by(factor) %>% 
+    mutate(maxf1 = max(f1, na.rm = T)) %>%
+    mutate(frac_max = f1 / maxf1) %>% 
+    ungroup() %>% 
+    group_by(method) %>% 
+    summarise(f1_sum = sum(f1, na.rm = T),
+              f1_frac_sum = sum(frac_max, na.rm = T)) %>% 
+    mutate(rank = min_rank(f1_sum)) %>% 
+    arrange(-rank) %>% 
+    mutate(method_f = factor(method, levels = method, ordered = T))
+  
+  d_summary3 <- d_all %>% 
+    filter(depth == depth_to_keep) %>% 
+    mutate(group_f = factor(group3, levels = 1:3, ordered = T),
+           method_f = factor(method, levels = d_summary2$method, ordered = T)) %>% 
+    group_by(method_f, group_f) %>%
+    summarise(f1 = sum(f1, na.rm = T),
+              n_motifs = length(factor)) %>% 
+    mutate(group_f = paste0(group_f, " (n = ", n_motifs, ")")) %>% 
+    mutate(group_f = factor(group_f, levels = unique(group_f), ordered = T)) %>% 
+    group_by(method_f, group_f) %>%
+    mutate(f1_sum = round(sum(f1), 1)) %>% 
+    ungroup()
+  
+  d_summary3_sums <- d_summary3 %>% 
+    group_by(method_f, group_f) %>% 
+    summarise(f1_sum = round(sum(f1), 1)) %>% 
+    group_by(method_f) %>% 
+    mutate(f1_pos = rev(c(5,10,18)))
+  
+  p <- ggplot(d_summary3, aes(x = method_f, y = f1, fill = group_f)) +
+    geom_col(color = 'black') +
+    geom_text(aes(y = f1_pos, label = f1_sum), d_summary3_sums) +
+    scale_fill_brewer(palette = 'Greys', direction = 1) +
+    labs(
+      x = "TF binding prediction method", 
+      y = "Total F1 score", 
+      fill = "f-VICE group",
+      title = sprintf("%s - %sM reads", sample, depth_to_keep)
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.y = element_blank()
+    )
+  plot(p)
+}
+# sapply(unique(d_all$depth), make_summary)
+sapply(max(d_all$depth), make_summary)
+```
+
+```{r, fig.width=7, fig.height=3.5}
+fvices <- read.table(sprintf("../data/processed/tf-binding/hepg2/%s.fvice.chip.out", sample),
+                      header = T, sep = "\t") %>% 
+  separate(motif, into = c("experiment", "factor", "motif"), sep = "__") %>% 
+  mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual) %>% 
+  select(c('factor', 'motif','experiment','pchart')) %>% 
+  mutate(group3  = ntile(pchart, 3),
+         norm_ctcf = pchart / pchart[factor == 'CTCF'])
+
+prauc <- get_prauc(sample) %>% 
+  left_join(fvices, by = c("experiment", "factor", "motif")) %>% 
+  mutate(group_f = factor(group3, levels = 1:3, ordered = T))
+
+make_fig1(prauc)
+```
+
+```{r}
+make_barplots(prauc, fvices)
+```
+
+```{r, fig.width=7, fig.height=3.5}
+f1 <- get_f1(sample)
+make_fig1.1(f1, "F1")
+
+ppv <- get_ppv(sample)
+make_fig1.1(ppv, "PPV")
+```
+
+```{r, fig.width=4, fig.height=4}
+prauc %>% 
+  filter(depth == max(depth)) %>% 
+  ggplot(aes(x = CENTIPEDE, y = ssCENTIPEDE)) +
+  geom_abline() +
+  geom_point() + 
+  labs(x = "CENTIPEDE AUC-PR",
+       y = "ssCENTIPEDE AUC-PR",
+       
+       title = sample)
+
+f1 %>% 
+  filter(depth == max(depth)) %>% 
+  ggplot(aes(x = CENTIPEDE, y = ssCENTIPEDE)) +
+  geom_abline() +
+  geom_point() +
+  labs(x = "CENTIPEDE F1",
+       y = "ssCENTIPEDE F1",
+       title = sample)
+```
+
+```{r, fig.width=8, fig.height=5}
+make_fig2(prauc)
+```
+
+## HepG2 2
+```{r, fig.width=4, fig.height=4}
+sample <- "hepg2_1"
+methods_to_keep <- rev(c("BMO","CENTIPEDE", 'DNase2TF', "HINT", "CENTIPEDE_sb", 
+                         "ATAC-seq peaks"))
+
+# Read data
+d <- "../data/processed/tf-binding/hepg2/f1_data.%s.txt" %>% 
+  sprintf(sample) %>% 
+  read.table(header = T, sep = "\t", stringsAsFactors = F) %>% 
+  separate(factor, into = c("experiment", "factor", "motif"), sep = "__") %>% 
+  mutate(method = gsub('WithinPeaks', 'ATAC-seq peaks', method)) %>% 
+  select(c("factor", "motif", "method", "f1", 
+           "depth", "experiment", "total_true_positives")) %>% 
+  filter(method %in% methods_to_keep) %>% 
+  mutate(f1 = case_when(is.na(f1) ~ 0,
+                        TRUE ~ f1))
+
+
+# Keep experiment with highest counts (need at least 1000 bound motifs)
+d <- d %>% 
+  filter(total_true_positives >= 1000) %>% 
+  group_by(factor,motif) %>% 
+  filter(total_true_positives == max(total_true_positives))
+
+exps_to_keep <- unique(d$experiment)
+
+fvices <- read.table(sprintf("../data/processed/tf-binding/hepg2/%s.fvice.chip.out", sample),
+                      header = T, sep = "\t") %>% 
+  separate(motif, into = c("experiment", "factor", "motif"), sep = "__")
+
+fvices <- fvices %>% 
+  filter(experiment %in% exps_to_keep) %>% 
+  select(c('factor', 'motif','experiment','pchart')) %>% 
+  mutate(group10 = ntile(pchart, 10),
+         group5  = ntile(pchart, 5),
+         group4  = ntile(pchart, 4),
+         group3  = ntile(pchart, 3),
+         group2  = ntile(pchart, 2),
+         norm_ctcf = pchart / pchart[factor == 'CTCF'])
+
+ord_factors <- fvices$factor[order(fvices$pchart)]
+
+fvices$factor_f <- factor(fvices$factor, levels = ord_factors, ordered = T)
+fvices$group_f  <- factor(fvices$group3, levels = 1:3, ordered = T)
+
+
+d_all <- d %>% left_join(fvices)
+
+d_all <- d_all %>% 
+  mutate(method_f = factor(method, methods_to_keep, ordered = T),
+         factor_f = factor(factor, levels = ord_factors, ordered = T),
+         group_f = factor(group3, levels = 1:3, ordered = T))
+
+make_summary <- function(depth_to_keep){
+  d_summary2 <- d_all %>%
+    filter(depth == depth_to_keep) %>% 
+    group_by(factor) %>% 
+    mutate(maxf1 = max(f1, na.rm = T)) %>%
+    mutate(frac_max = f1 / maxf1) %>% 
+    ungroup() %>% 
+    group_by(method) %>% 
+    summarise(f1_sum = sum(f1, na.rm = T),
+              f1_frac_sum = sum(frac_max, na.rm = T)) %>% 
+    mutate(rank = min_rank(f1_sum)) %>% 
+    arrange(-rank) %>% 
+    mutate(method_f = factor(method, levels = method, ordered = T))
+  
+  d_summary3 <- d_all %>% 
+    filter(depth == depth_to_keep) %>% 
+    mutate(group_f = factor(group3, levels = 1:3, ordered = T),
+           method_f = factor(method, levels = d_summary2$method, ordered = T)) %>% 
+    group_by(method_f, group_f) %>%
+    summarise(f1 = sum(f1, na.rm = T),
+              n_motifs = length(factor)) %>% 
+    mutate(group_f = paste0(group_f, " (n = ", n_motifs, ")")) %>% 
+    mutate(group_f = factor(group_f, levels = unique(group_f), ordered = T)) %>% 
+    group_by(method_f, group_f) %>%
+    mutate(f1_sum = round(sum(f1), 1)) %>% 
+    ungroup()
+  
+  d_summary3_sums <- d_summary3 %>% 
+    group_by(method_f, group_f) %>% 
+    summarise(f1_sum = round(sum(f1), 1)) %>% 
+    group_by(method_f) %>% 
+    mutate(f1_pos = rev(c(5,10,18)))
+  
+  p <- ggplot(d_summary3, aes(x = method_f, y = f1, fill = group_f)) +
+    geom_col(color = 'black') +
+    geom_text(aes(y = f1_pos, label = f1_sum), d_summary3_sums) +
+    scale_fill_brewer(palette = 'Greys', direction = 1) +
+    labs(
+      x = "TF binding prediction method", 
+      y = "Total F1 score", 
+      fill = "f-VICE group",
+      title = sprintf("%s - %sM reads", sample, depth_to_keep)
+    ) +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      panel.grid.major.x = element_blank(),
+      panel.grid.minor.y = element_blank()
+    )
+  plot(p)
+}
+# sapply(unique(d_all$depth), make_summary)
+sapply(max(d_all$depth), make_summary)
+```
+
+```{r, fig.width=7, fig.height=3.5}
+fvices <- read.table(sprintf("../data/processed/tf-binding/hepg2/%s.fvice.chip.out", sample),
+                      header = T, sep = "\t") %>% 
+  separate(motif, into = c("experiment", "factor", "motif"), sep = "__") %>% 
+  mutate(residual = lm(pchart ~ log10(nreads) + log10(nmotifs))$residual) %>% 
+  select(c('factor', 'motif','experiment','pchart')) %>% 
+  mutate(group3  = ntile(pchart, 3),
+         norm_ctcf = pchart / pchart[factor == 'CTCF'])
+
+prauc <- get_prauc(sample) %>% 
+  left_join(fvices, by = c("experiment", "factor", "motif")) %>% 
+  mutate(group_f = factor(group3, levels = 1:3, ordered = T))
+
+make_fig1(prauc)
+```
+
+```{r}
+make_barplots(prauc, fvices)
+```
+
+```{r, fig.width=7, fig.height=3.5}
+f1 <- get_f1(sample)
+make_fig1.1(f1, "F1")
+
+ppv <- get_ppv(sample)
+make_fig1.1(ppv, "PPV")
+```
+
+```{r, fig.width=4, fig.height=4}
+prauc %>% 
+  filter(depth == max(depth)) %>% 
+  ggplot(aes(x = CENTIPEDE, y = ssCENTIPEDE)) +
+  geom_abline() +
+  geom_point() + 
+  labs(x = "CENTIPEDE AUC-PR",
+       y = "ssCENTIPEDE AUC-PR",
+       
+       title = sample)
+
+f1 %>% 
+  filter(depth == max(depth)) %>% 
+  ggplot(aes(x = CENTIPEDE, y = ssCENTIPEDE)) +
+  geom_abline() +
+  geom_point() +
+  labs(x = "CENTIPEDE F1",
+       y = "ssCENTIPEDE F1",
+       title = sample)
+```
+
+```{r, fig.width=8, fig.height=5}
+make_fig2(prauc)
 ```

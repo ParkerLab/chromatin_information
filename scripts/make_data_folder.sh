@@ -19,6 +19,9 @@ cp /home/albanus/analyses/2019/atacseq_peaks_macs2/bin/calculate_F1_noPIQ.R \
     bin/calculate_F1.R
 
 # Data
+cp /lab/work/albanus/2019_encode_chipseq_redo/associations_top1_2019_hepg2.txt data/chipseq_associations_hepg2.txt
+cp /lab/work/albanus/2019_encode_chipseq_redo/associations_top1_2019_gm12878.txt data/chipseq_associations_gm12878.txt
+cp /lab/work/albanus/2019_hepg2_atac/work/tf-binding/output/hepg2_{1,3}.fvice.chip.out data/processed/tf-binding/hepg2/
 cp /lab/work/albanus/2018_redo_all/work/f-vices_1KG/output/lab_gm12878__information_track_clusters.txt \
     data/processed/fvices/
 cp /lab/work/albanus/k-mer_restimes/bed_files_sorted_noBL/6-mers/*.bed \
