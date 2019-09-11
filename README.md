@@ -8,10 +8,14 @@ This repository will allow you to generate all the main figures from our manuscr
 
 ## Usage
 ### Browsing processed results
-The `notebooks_processed` folder contains a Rmd (R Markdown) file for each set of analyses. Just open these files in RStudio and knit the html output.
+1. Download the full processed data from zenodo:
+```sh
+wget  https://zenodo.org/placeholder
+```
+2. The `notebooks` folder contains a Rmd (R Markdown) file for each set of analyses. Just open these files in RStudio and knit the html output.
+
 ### Generating results from scratch
-1. Go to each of the `analyses` subfolders **in order** and run the commands described in the README.
-2. Go to the `notebooks_local` folder and execute the Rmd files. They should be able to knit the html output once step 1 is complete.
+Go to each of the `analyses` subfolders **in order** and run the commands described in the README.
 
 ## Software requirements
 ### Using our conda environment
@@ -33,12 +37,14 @@ Fetch the necessary R packages
 Rscript scripts/install_dependencies.R
 ```
 Other required software can be found following the links below. The versions we used are in parentheses.
-* [HINT](http://www.regulatory-genomics.org/hint) (RGT 0.12.1)
+* [CENTIPEDE](http://centipede.uchicago.edu) (1.2)
+* [HINT](http://www.regulatory-genomics.org/hint) (0.12.1, RGT 1.1.1)
 * [DNase2TF](https://sourceforge.net/projects/dnase2tfr) (1.0)
 * [PIQ](http://piq.csail.mit.edu) (1.3)
 * [ngsplot](https://github.com/shenlab-sinai/ngsplot) (2.63)
 
-### Manually installing core dependencies
+### Manually installing the core dependencies included in conda environment
+In case you cannot use the environment, below are the core dependencies:
 * [R](https://www.r-project.org) (3.5.1)
 * [Python](https://www.python.org) (3.5.3)
 * [Rstudio](https://www.rstudio.com) (1.1.456). Required for the RMarkdown notebooks. 
