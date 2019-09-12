@@ -38,16 +38,21 @@ Rscript scripts/install_dependencies.R
 ```
 Other required software can be found following the links below. The versions we used are in parentheses.
 * [CENTIPEDE](http://centipede.uchicago.edu) (1.2)
-* [HINT](http://www.regulatory-genomics.org/hint) (0.12.1, RGT 1.1.1)
 * [DNase2TF](https://sourceforge.net/projects/dnase2tfr) (1.0)
+* [HINT](http://www.regulatory-genomics.org/hint) (0.12.1, RGT 1.1.1)
 * [PIQ](http://piq.csail.mit.edu) (1.3)
 * [ngsplot](https://github.com/shenlab-sinai/ngsplot) (2.63)
+
+We bundled the core BMO scripts here, but if you wish to use it in your own projects, please go to the [official BMO repository](https://github.com/ParkerLab/BMO).
 
 ### Manually installing the core dependencies included in conda environment
 In case you cannot use the environment, below are the core dependencies:
 * [R](https://www.r-project.org) (3.5.1)
 * [Python](https://www.python.org) (3.5.3)
 * [Rstudio](https://www.rstudio.com) (1.1.456). Required for the RMarkdown notebooks. 
+* [bedtools](https://bedtools.readthedocs.io/en/latest/content/installation.html) (2.26.0)
+* [samtools](http://samtools.sourceforge.net) (1.9)
+* [MACS2](https://github.com/taoliu/MACS) (2.1.1.20160309)
 * [Snakemake](https://snakemake.readthedocs.io/en/stable/) (5.5.0)
 * [Slurm](https://slurm.schedmd.com) (16.05.09) or some other job scheduler. The cluster config files here are set up for slurm.
 
