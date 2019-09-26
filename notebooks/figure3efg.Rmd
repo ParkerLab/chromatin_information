@@ -84,13 +84,39 @@ ggplot(kmer_fvices, aes(x = log10(nreads + 1), y = residual)) +
   labs(x = "Number of ATAC-seq fragments", y = "Normalized f-VICE")
 ```
 
+```{r}
+hamming <- function(a, b) {
+  a = unlist(strsplit(a, ""))
+  b = unlist(strsplit(b, ""))
+  length(a) - sum(a == b)
+}
+
+tmp <- kmer_fvices_trimmed %>%
+  filter(grepl("abcu", sample)) %>%
+  select(kmer, residual)
+
+kmer1 = "CGCCCC"
+hamming_table <- lapply(tmp$kmer, function(kmer2) {
+  data.frame(kmer1, kmer2, hamming = hamming(kmer1, kmer2))
+}) %>%
+  bind_rows() %>% 
+  filter(hamming == 1) %>% 
+  left_join(tmp, by = c("kmer1" = "kmer")) %>% 
+  rename(residual1 = residual) %>% 
+  left_join(tmp, by = c("kmer2" = "kmer")) %>% 
+  rename(residual2 = residual) %>% 
+  mutate(diff = abs(residual1 - residual2)) %>% 
+  mutate(ratio = diff / residual1)
+```
+
+
 # Distribution of 6-mer f-VICEs
 Colored lines correspond to the two 6-mers in detailed in the main figure inset
 ```{r, fig.width=5, fig.height=4}
 kmer_fvices %>% 
   group_by(sample) %>% 
-  mutate(line1 = residual[kmer == "CACTAG"],
-         line2 = residual[kmer == "CACTCG"]) %>% 
+  mutate(line1 = residual[kmer == "CGCCCC"],
+         line2 = residual[kmer == "CGACCC"]) %>% 
   ungroup() %>% 
   mutate(sample = factor(sample, levels = samples, labels = labs, ordered = T)) %>% 
   ggplot(aes(residual)) +
@@ -104,8 +130,8 @@ kmer_fvices %>%
 ```{r, fig.width=3.5, fig.height=2.5}
 kmer_fvices %>% 
   filter(grepl("abcu", sample)) %>% 
-  mutate(line1 = residual[kmer == "CACTAG"],
-         line2 = residual[kmer == "CACTCG"]) %>% 
+  mutate(line1 = residual[kmer == "CGCCCC"],
+         line2 = residual[kmer == "CGACCC"]) %>% 
   ggplot(aes(residual)) +
   geom_histogram(bins = 30, color = "black", fill = "lightgray") +
   geom_vline(aes(xintercept = line1), color = "red") +

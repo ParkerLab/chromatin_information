@@ -106,6 +106,21 @@ d_plot %>%
   coord_flip()
 ```
 
+```{r}
+# Calculate the median enrichment
+d %>% 
+  filter(grepl("f-VICE", feature)) %>% 
+  filter(!grepl("maf0.2", trait)) %>% 
+  select(feature, trait, enrich_fold, sample) %>% 
+  mutate(feature = gsub("BMO bound \\((high|low) f-VICE\\)", "\\1", feature)) %>% 
+  spread(feature, enrich_fold) %>% 
+  group_by(trait, sample) %>% 
+  summarise(fold = high/low) %>% 
+  pull(fold) %>% 
+  median()
+```
+
+
 ```{r, fig.height=5, fig.width=4}
 d_plot %>% 
   mutate(sample = factor(sample, levels = c("lab_gm12878", "buenrostro_rep1"),
