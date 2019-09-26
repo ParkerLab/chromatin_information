@@ -108,6 +108,21 @@ VERSION_DIR = join(RESULTS, "versions")
 # will be used to determine the output files for each sample
 subsample_depths = {x: subsampled_depths_from_sample(x) for x in get_samples()}
 
+# Number of motifs and motif-number dictionary - used for PIQ
+# e.g. 9-CTCFknown2, 20-NFKBknown10
+# Wildcards
+motifs = get_motifs()
+motifs = list(set(motifs)) # remove duplicates
+motifs.sort()
+nmotifs = len(motifs)
+motif_dic = {}
+motif_handle_dic = {}
+for i in range(0, nmotifs):
+    motif = motifs[i]
+    handle = "{}-{}".format(i + 1, motifs[i].replace("_", "").replace(".", ""))
+    motif_dic[motif] = str(i + 1)
+    motif_handle_dic[motif] = handle
+
 
 rule all:
     input:
@@ -180,7 +195,7 @@ rule all:
             ),
             sample=sample,
             depth=depths,
-            motif=get_motifs()
+            motif=motifs
         ) for sample, depths in subsample_depths.items()],
         # PIQ - scores files
         [expand(
@@ -190,7 +205,7 @@ rule all:
             ),
             sample=sample,
             depth=depths,
-            motif=get_motifs()
+            motif=motifs
         ) for sample, depths in subsample_depths.items()],
 
         # Motifs in peaks (binary)

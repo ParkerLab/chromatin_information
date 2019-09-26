@@ -170,14 +170,15 @@ subsample_depths = {x: subsampled_depths_from_sample(x) for x in get_samples()}
 
 # Number of motifs and motif-number dictionary - used for PIQ
 # e.g. 9-CTCFknown2, 20-NFKBknown10
-all_motifs = [x for x in get_motifs()]
-all_motifs.sort()
-nmotifs = len(all_motifs)
+motifs = get_motifs()
+motifs = list(set(motifs)) # remove duplicates
+motifs.sort()
+nmotifs = len(motifs)
 motif_dic = {}
 motif_handle_dic = {}
 for i in range(0, nmotifs):
-    motif = all_motifs[i]
-    handle = "{}-{}".format(i + 1, all_motifs[i].replace("_", ""))
+    motif = motifs[i]
+    handle = "{}-{}".format(i + 1, motifs[i].replace("_", "").replace(".", ""))
     motif_dic[motif] = str(i + 1)
     motif_handle_dic[motif] = handle
 
@@ -239,6 +240,26 @@ rule all:
             sample=sample,
             depth=depths,
             motif=get_motifs()
+        ) for sample, depths in subsample_depths.items()],
+        # PIQ - binarized files
+        [expand(
+            os.path.join(
+                PIQ_DIR,
+                "processed_output_binary", "{sample}", "{depth}M.{motif}.bed"
+            ),
+            sample=sample,
+            depth=depths,
+            motif=motifs
+        ) for sample, depths in subsample_depths.items()],
+        # PIQ - scores files
+        [expand(
+            os.path.join(
+                PIQ_DIR,
+                "processed_output_scores", "{sample}", "{depth}M.{motif}.bed"
+            ),
+            sample=sample,
+            depth=depths,
+            motif=motifs
         ) for sample, depths in subsample_depths.items()],
         # Motifs in peaks
         [expand(

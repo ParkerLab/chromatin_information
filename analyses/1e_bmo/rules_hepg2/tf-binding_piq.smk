@@ -31,7 +31,7 @@ rule gather_motifs:
     input:
         expand(
             os.path.join(PIQ_DIR, "motifs", "{motif}.jaspar"),
-            motif=get_motifs()
+            motif=motifs
         )
     output:
         mat = os.path.join(PIQ_DIR, "motifs", "matrices.txt")
@@ -55,6 +55,8 @@ rule pwm_key:
         rm tmp.keys*txt
         """
 
+# Note that variable i is defined in rule piq, but snakemake 
+# is able to propagate it bottom-up
 rule pwm_scan:
     input:
         mat = os.path.join(PIQ_DIR, "motifs", "matrices.txt"),
