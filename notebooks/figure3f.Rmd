@@ -1,0 +1,113 @@
+---
+title: "Figure 3C"
+output:
+  html_document:
+    theme: readable
+    df_print: paged
+    code_folding: hide
+    toc: true
+editor_options: 
+  chunk_output_type: inline
+---
+
+```{r setup, include=FALSE}
+options(stringsAsFactors = F)
+seed <- 87532163
+
+library(knitr)
+library(ggplot2)
+library(ggpointdensity)
+library(RColorBrewer)
+library(dplyr)
+library(tidyr)
+library(scales)
+
+source("../bin/R_rainclouds.R")
+
+# knitr::opts_knit$set(root.dir = "PLACEHOLDER")
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, fig.show = "hold")
+
+theme_set(theme_bw(base_size = 12))
+```
+
+```{r}
+
+samples <- c( "abcu196_4", "lab_gm12878", "buenrostro_rep1", "hepg2_3")
+labs <- c("Pancreatic islets", "GM12878\n(this study)", "GM12878\n(Buenrostro)",
+          "HepG2")
+
+d <- lapply(samples, function(i){
+  sprintf("../data/processed/6-mers/%s.hamming.txt", i) %>% 
+    read.table(header = T) %>% 
+    mutate(sample = i)
+  }) %>% 
+  bind_rows() %>% 
+  mutate(sample_ord = factor(sample, levels = samples, labels = labs, ordered = T))
+
+d_summary <- d %>% 
+  group_by(sample, kmer1) %>% 
+  summarise(fvice = unique(fvice1), max = max(fvice2), min = min(fvice2)) %>% 
+  mutate(range = abs(max - min)) %>% 
+  mutate(range_signed = max - min) %>% 
+  mutate(rel_max = abs(fvice - max), rel_min = abs(fvice - min)) %>% 
+  mutate(sample_ord = factor(sample, levels = samples, labels = labs, ordered = T))
+```
+
+```{r, fig.width=8, fig.height=2.5, dev="cairo_pdf"}
+# ```{r, fig.width=7, fig.height=5}
+ggplot(d_summary, aes(x = rel_min, y = rel_max)) +
+  geom_pointdensity() +
+  geom_abline() +
+  scale_color_viridis_c(trans = "log10", labels = comma) +
+  facet_wrap(~ sample_ord, nrow = 1) + 
+  labs(x = "Max f-VICE decrease relative to reference 6-mer", 
+       y = "Max f-VICE increase relative to reference 6-mer", 
+       color = "Density")
+
+ggplot(d_summary, aes(range_signed)) +
+  geom_histogram(color = "black", fill = "gray", bins = 30) +
+  facet_wrap(~ sample_ord, nrow = 1) + 
+  labs(x = "f-VICE difference range", y = "Count")
+```
+
+```{r, fig.width=8, fig.height=2.5, dev="cairo_pdf"}
+# ```{r, fig.width=7, fig.height=5}
+nt_pct <- function(kmer, nt = c("G", "C"), len = 6) {
+  sum(unlist(strsplit(kmer, "")) %in% nt) / len
+}
+
+d_gc <- d_summary %>% 
+  rowwise() %>% 
+  mutate(gc = round(nt_pct(kmer1), 1)) %>% 
+  ungroup() %>% 
+  mutate(gc = factor(gc))
+
+ggplot(d_gc, aes(x = gc, y = range_signed, group = gc)) +
+  geom_flat_violin(position = position_nudge(x = 0, y = 0), adjust = 1, 
+                   trim = FALSE, alpha = .5) +
+  geom_point(aes(x = as.numeric(gc) - 0.3, y = range), 
+             position = position_jitter(width = .10, height = 0),
+             size = .25, alpha = .5) +
+  geom_boxplot(aes(x = as.numeric(gc) + 0, y = range), 
+               outlier.shape = NA, width = .15,color = "black") +
+  facet_wrap(~ sample_ord, scales = "free_y", nrow = 1) + 
+  labs(x = "GC content", y = "f-VICE range", color = "Density")
+```
+
+```{r, fig.width=8, fig.height=2.5, dev="cairo_pdf"}
+pal <- rev(brewer.pal(9, "RdBu"))
+pal[5] <- "gray"
+
+d_gc %>% 
+  mutate(gc = as.numeric(as.character(gc))) %>% 
+  ggplot(aes(x = rel_min, y = rel_max, color = gc)) +
+  geom_point(alpha = .5) +
+  geom_abline() +
+  scale_color_gradientn(colors = pal) +
+  facet_wrap(~ sample_ord, nrow = 1) + 
+  labs(x = "Max f-VICE decrease\n(relative to reference 6-mer)", 
+       y = "Max f-VICE increase\n(relative to reference 6-mer)", 
+       color = "6-mer\nGC content") +
+  theme(panel.grid.minor = element_blank())
+
+```

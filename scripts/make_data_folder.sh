@@ -172,3 +172,10 @@ do
 done
 
 
+# 6-mer Hamming table
+for i in abcu196_4 lab_gm12878 buenrostro_rep1 hepg2_3
+do
+    infile="/lab/work/albanus/2019_6-mer_hamming/work/hamming_1/${i}.txt"
+    outfile="data/processed/6-mers/${i}.hamming.txt"
+    cp ${infile} ${outfile}
+done

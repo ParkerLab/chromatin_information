@@ -11,6 +11,7 @@ This repository will allow you to generate all the main figures from our [manusc
 1. Download the full processed data from zenodo and place it at the root of the cloned repository:
 ```sh
 wget https://zenodo.org/record/3478583/files/chromatin_information_manuscript_data.tar.gz
+tar -xzvf chromatin_information_manuscript_data.tar.gz
 ```
 2. The `notebooks` folder contains a Rmd (R Markdown) file for each set of analyses. Just open these files in RStudio and knit the html output.
 
