@@ -4,13 +4,13 @@ _A companion repository_
 Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Peter Orchard, Jacob O. Kitzman, Stephen C. J. Parker
 
 ## Description
-This repository will allow you to generate all the main figures from our manuscript.
+This repository will allow you to generate all the main figures from our [manuscript](https://www.biorxiv.org/content/10.1101/777532v2).
 
 ## Usage
 ### Browsing processed results
 1. Download the full processed data from zenodo and place it at the root of the cloned repository:
 ```sh
-wget  https://zenodo.org/record/3478583/files/chromatin_information_manuscript_data.tar.gz
+wget https://zenodo.org/record/3478583/files/chromatin_information_manuscript_data.tar.gz
 ```
 2. The `notebooks` folder contains a Rmd (R Markdown) file for each set of analyses. Just open these files in RStudio and knit the html output.
 
