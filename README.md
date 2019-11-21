@@ -4,7 +4,7 @@ _A companion repository_
 Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Peter Orchard, Jacob O. Kitzman, Stephen C. J. Parker
 
 ## Description
-This repository will allow you to generate all the main figures from our [manuscript](https://www.biorxiv.org/content/10.1101/777532v2).
+This repository will allow you to generate all the main figures from our [manuscript](https://doi.org/10.1101/777532). If you only want to use BMO, please refer to [the official BMO repository](https://github.com/ParkerLab/BMO).
 
 ## Usage
 ### Browsing processed results
@@ -44,7 +44,7 @@ Other required software can be found following the links below. The versions we 
 * [PIQ](http://piq.csail.mit.edu) (1.3)
 * [ngsplot](https://github.com/shenlab-sinai/ngsplot) (2.63)
 
-We bundled the core BMO scripts here, but if you wish to use it in your own projects, please go to the [official BMO repository](https://github.com/ParkerLab/BMO).
+We bundled the core BMO scripts here, but if you wish to use it in your own projects, please refer to the [official BMO repository](https://github.com/ParkerLab/BMO).
 
 ### Manually installing the core dependencies included in conda environment
 In case you cannot use the environment, below are the core dependencies:
@@ -60,4 +60,4 @@ In case you cannot use the environment, below are the core dependencies:
 
 ## Contact
 * For questions directly about the paper, the corresponding author is Dr. Stephen C.J. Parker (scjp@umich.edu).
-* If anything here is (or feels) broken or you just have questions regarding how to set up the analyses, contact Ricardo Albanus directly at albanus@umich.edu.
+* If anything here is or feels broken, or if you just have questions regarding how to set up the analyses, contact Ricardo Albanus directly at albanus@umich.edu.
