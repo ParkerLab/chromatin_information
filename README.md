@@ -3,6 +3,8 @@ _A companion repository_
 
 Ricardo D’Oliveira Albanus, Yasuhiro Kyono, John Hensley, Arushi Varshney, Peter Orchard, Jacob O. Kitzman, Stephen C. J. Parker
 
+[![DOI](https://zenodo.org/badge/206384812.svg)](https://zenodo.org/badge/latestdoi/206384812)
+
 ## Description
 This repository will allow you to generate all the main figures from our [manuscript](https://doi.org/10.1101/777532). If you only want to use BMO, please refer to [the official BMO repository](https://github.com/ParkerLab/BMO).
 
