@@ -62,4 +62,4 @@ In case you cannot use the environment, below are the core dependencies:
 
 ## Contact
 * For questions directly about the paper, the corresponding author is Dr. Stephen C.J. Parker (scjp@umich.edu).
-* If anything here is or feels broken, or if you just have questions regarding how to set up the analyses, contact Ricardo Albanus directly at albanus@umich.edu.
+* If anything here is or feels broken, or if you just have questions regarding how to set up the analyses, contact Ricardo Albanus directly at dricardo@wustl.edu or create an Issue in this repository.
